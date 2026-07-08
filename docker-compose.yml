@@ -1,0 +1,18 @@
+services:
+  pulseorperish:
+    image: pulseorperish:local
+    container_name: pulseorperish
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      POP_PASSWORD: "secret"
+      POP_LISTEN: ":8080"
+      POP_INTERVAL: "24h"
+      POP_DRY_RUN: "true"
+      POP_DATA_DIR: "/data"
+      POP_STATE_DIR: "/state"
+      POP_LOG_LEVEL: "info"
+    volumes:
+      - ./demo-data:/data
+      - ./demo-state:/state
