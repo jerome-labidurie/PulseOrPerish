@@ -1,15 +1,15 @@
 services:
   pulseorperish:
-    image: pulseorperish:local
+    image: ghcr.io/jerome-labidurie/pulseorperish:latest
     container_name: pulseorperish
     restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
-      POP_PASSWORD: "secret"
+      POP_PASSWORD: "mysecret"
       POP_LISTEN: ":8080"
       POP_INTERVAL: "24h"
-      POP_DRY_RUN: "true"
+      POP_DRY_RUN: "false"
       POP_DATA_DIR: "/data"
       POP_STATE_DIR: "/state"
       POP_LOG_LEVEL: "info"
