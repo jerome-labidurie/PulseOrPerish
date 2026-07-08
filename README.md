@@ -2,6 +2,8 @@
 
 Dead man switch in Go.
 
+Protect what matters with a simple heartbeat: as long as you are alive, your data stays safe; if you stop checking in, **PulseOrPerish** automatically wipes the target directory. Lightweight, self-hosted, and ready in minutes with a web UI, API, and container support.
+
 ## Features
 - HTTP UI to submit proof-of-life with a password
 - REST API with same capabilities
@@ -10,17 +12,21 @@ Dead man switch in Go.
 - Configurable via CLI flags and environment variables
 - Distroless-compatible container image
 
+![webui](./img/webui.png)
+
 ## Configuration
 Priority: flags > environment variables > defaults.
 
-- `--password` / `POP_PASSWORD` (required)
-- `--interval` / `POP_INTERVAL` (default: `720h`, one month)
-- `--dry-run` / `POP_DRY_RUN` (default: `false`, logs actions but does not delete)
-- `--data-dir` / `POP_DATA_DIR` (required, absolute path)
-- `--state-dir` / `POP_STATE_DIR` (default: `/state`)
-- `--log-path` / `POP_LOG_PATH` (default: stdout)
-- `--log-level` / `POP_LOG_LEVEL` (`debug|info|warn|error|critical`, default: `info`)
-- `--listen` / `POP_LISTEN` (default: `:8080`)
+| Description | Env variable | Flag | Default | Values / Example |
+|---|---|---|---|---|
+| Authentication password | `POP_PASSWORD` | `--password` | *(required)* | `mysecret` |
+| Interval between proofs | `POP_INTERVAL` | `--interval` | `720h` | `1h`, `24h`, `720h` |
+| Dry-run mode (no deletion) | `POP_DRY_RUN` | `--dry-run` | `false` | `true`, `false` |
+| Directory to wipe on deadline | `POP_DATA_DIR` | `--data-dir` | *(required)* | `/data` (absolute path) |
+| Directory for state persistence | `POP_STATE_DIR` | `--state-dir` | `/state` | `/var/lib/pop/state` |
+| Log output path | `POP_LOG_PATH` | `--log-path` | stdout | `/var/log/pop.log` |
+| Log level | `POP_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn`, `error`, `critical` |
+| HTTP listen address | `POP_LISTEN` | `--listen` | `:8080` | `:8086`, `0.0.0.0:8080` |
 
 ## API
 - `GET /health` no auth
@@ -32,16 +38,39 @@ Priority: flags > environment variables > defaults.
 
 Authentication: `Authorization: Bearer <password>`
 
-## Extension points
-- Proof-of-life channel extension: the monitor accepts a source identifier when registering a proof (`RegisterProof(source)`), so future providers (webhook, CLI, messaging bot) can be added without changing deletion logic.
-- Deletion policy extension: deletion is behind a `Deleter` interface. V1 provides safe directory-content wipe; V2 can add policy-specific implementations.
-- Multi-directory roadmap: V1 manages one directory. V2 can evolve to map `directory -> policy` while reusing monitor/store/http layers.
+## API examples
+```bash
+BASE_URL="http://localhost:8086"
+PASSWORD="mysecret"
+```
+
+Health check:
+```bash
+curl -s "$BASE_URL/health"
+```
+
+Public status:
+```bash
+curl -s "$BASE_URL/status" | jq .
+```
+
+Proof of life (auth required):
+```bash
+curl -s -X POST "$BASE_URL/alive" \
+  -H "Authorization: Bearer $PASSWORD"
+```
+
+Protected API v1 status:
+```bash
+curl -s "$BASE_URL/api/v1/status" \
+  -H "Authorization: Bearer $PASSWORD" | jq .
+```
 
 ## Run locally
 ```bash
 go run ./cmd/pulseorperish \
   --listen=':8086' \
-  --password='secret' \
+  --password='mysecret' \
   --data-dir='/tmp/pop-data' \
   --state-dir='/tmp/pop-state' \
   --dry-run='true' \
@@ -65,9 +94,12 @@ docker build -t pulseorperish:local .
 ```
 
 ## Example docker run
+
+You can also use the [docker-compose](./docker-compose.yml) example
+
 ```bash
 docker run --rm -it -p 8086:8080 \
-  -e POP_PASSWORD=secret \
+  -e POP_PASSWORD=mysecret \
   -e POP_DATA_DIR=/data \
   -e POP_STATE_DIR=/state \
   -v $(pwd)/demo-data:/data \
