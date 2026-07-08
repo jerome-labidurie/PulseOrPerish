@@ -48,6 +48,17 @@ go run ./cmd/pulseorperish \
   --interval='1m'
 ```
 
+## Tests
+Unit tests:
+```bash
+go test ./...
+```
+
+End-to-end tests:
+```bash
+go test ./internal/testkit/e2e -v -timeout 30m
+```
+
 ## Build container
 ```bash
 docker build -t pulseorperish:local .
