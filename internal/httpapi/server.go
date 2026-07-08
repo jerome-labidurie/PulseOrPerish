@@ -32,12 +32,10 @@ func (s *Server) Router() http.Handler {
 	})
 	r.Get("/", s.handleIndex)
 	r.Get("/status", s.handleStatus)
-	r.Post("/alive", s.handleAlive)
 
 	r.Group(func(pr chi.Router) {
 		pr.Use(s.authMiddleware)
-		pr.Post("/api/v1/alive", s.handleAlive)
-		pr.Get("/api/v1/status", s.handleStatus)
+    r.Post("/alive", s.handleAlive)
 	})
 
 	return r
@@ -118,7 +116,7 @@ func (s *Server) extractPassword(r *http.Request) string {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.log.Debug().Str("remote", r.RemoteAddr).Msg("status request")
 	st := s.monitor.Snapshot(time.Now().UTC())
-	if strings.HasPrefix(r.URL.Path, "/api/") || strings.Contains(r.Header.Get("Accept"), "application/json") || r.URL.Path == "/status" {
+	if strings.Contains(r.Header.Get("Accept"), "application/json") || r.URL.Path == "/status" {
 		writeJSON(w, http.StatusOK, st)
 		return
 	}

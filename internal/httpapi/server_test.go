@@ -58,16 +58,6 @@ func TestStatusNoAuth(t *testing.T) {
 	}
 }
 
-func TestAPIStatusRequiresAuth(t *testing.T) {
-	h := newTestServer(t)
-	r := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", w.Code)
-	}
-}
-
 func TestAliveRequiresPassword(t *testing.T) {
 	h := newTestServer(t)
 	r := httptest.NewRequest(http.MethodPost, "/alive", nil)

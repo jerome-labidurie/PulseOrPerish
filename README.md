@@ -5,7 +5,7 @@ Dead man switch in Go.
 Protect what matters with a simple heartbeat: as long as you are alive, your data stays safe; if you stop checking in, **PulseOrPerish** automatically wipes the target directory. Lightweight, self-hosted, and ready in minutes with a web UI, API, and container support.
 
 ## Features
-- HTTP UI to submit proof-of-life with a password
+- HTTP User Interface to submit proof-of-life with a password
 - REST API with same capabilities
 - Persistent heartbeat state surviving container restarts
 - Automatic data directory content wipe when deadline is exceeded
@@ -20,7 +20,7 @@ Priority: flags > environment variables > defaults.
 | Description | Env variable | Flag | Default | Values / Example |
 |---|---|---|---|---|
 | Authentication password | `POP_PASSWORD` | `--password` | *(required)* | `mysecret` |
-| Interval between proofs | `POP_INTERVAL` | `--interval` | `720h` | `1h`, `24h`, `720h` |
+| Interval between proofs | `POP_INTERVAL` | `--interval` | `720h` | `24h`, `720h` ([format](https://pkg.go.dev/time#ParseDuration)) |
 | Dry-run mode (no deletion) | `POP_DRY_RUN` | `--dry-run` | `false` | `true`, `false` |
 | Directory to wipe on deadline | `POP_DATA_DIR` | `--data-dir` | *(required)* | `/data` (absolute path) |
 | Directory for state persistence | `POP_STATE_DIR` | `--state-dir` | `/state` | `/var/lib/pop/state` |
@@ -29,14 +29,14 @@ Priority: flags > environment variables > defaults.
 | HTTP listen address | `POP_LISTEN` | `--listen` | `:8080` | `:8086`, `0.0.0.0:8080` |
 
 ## API
+- `GET /` no auth, HTTP UI
 - `GET /health` no auth
-- `GET /` no auth
-- `POST /alive` auth required
 - `GET /status` no auth
-- `POST /api/v1/alive` auth required
-- `GET /api/v1/status` auth required
+- `POST /alive` auth required
 
-Authentication: `Authorization: Bearer <password>`
+Authentication can be done via 2 methods:
+* Header: `Authorization: Bearer <password>`
+* json data: `{"password":"<password>"}`
 
 ## API examples
 ```bash
@@ -58,27 +58,26 @@ Proof of life (auth required):
 ```bash
 curl -s -X POST "$BASE_URL/alive" \
   -H "Authorization: Bearer $PASSWORD"
-```
-
-Protected API v1 status:
-```bash
-curl -s "$BASE_URL/api/v1/status" \
-  -H "Authorization: Bearer $PASSWORD" | jq .
+# or
+curl -s -X POST "$BASE_URL/alive" \
+  -H "Content-Type: application/json" \
+  --data '{"password":"'${PASSWORD}'"}'
 ```
 
 ## Run locally
 ```bash
+mkdir /tmp/pop-data
 go run ./cmd/pulseorperish \
   --listen=':8086' \
   --password='mysecret' \
   --data-dir='/tmp/pop-data' \
   --state-dir='/tmp/pop-state' \
   --dry-run='true' \
-  --interval='1m'
+  --interval='5m'
 ```
 
 ## Tests
-Unit tests:
+All tests:
 ```bash
 go test ./...
 ```
@@ -104,6 +103,5 @@ docker run --rm -it -p 8086:8080 \
   -e POP_STATE_DIR=/state \
   -v $(pwd)/demo-data:/data \
   -v $(pwd)/demo-state:/state \
-  pulseorperish:local
+  ghcr.io/jerome-labidurie/pulseorperish:latest
 ```
-
