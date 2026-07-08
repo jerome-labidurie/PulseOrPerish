@@ -36,6 +36,18 @@ jobs:
           pkgs="$(go list ./... | grep -v '/internal/testkit/e2e$')"
           go test $pkgs
 
+  docker-build-check:
+    name: Docker build check
+    runs-on: ubuntu-latest
+    needs: build-and-unit-tests
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image (no push)
+        run: docker build -t pulseorperish:ci-check .
+
   e2e-tests:
     name: End-to-end tests
     runs-on: ubuntu-latest
