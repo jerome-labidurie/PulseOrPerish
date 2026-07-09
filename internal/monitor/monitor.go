@@ -16,11 +16,12 @@ import (
 // Status is a point-in-time snapshot of the monitor state, suitable for
 // JSON serialisation in API responses.
 type Status struct {
-	LastProofAt   time.Time `json:"lastProofAt"`
-	NextDeletion  time.Time `json:"nextDeletion"`
-	TimeRemaining string    `json:"timeRemaining"`
-	Overdue       bool      `json:"overdue"`
-	DryRun        bool      `json:"dryRun"`
+	LastProofAt          time.Time `json:"lastProofAt"`
+	NextDeletion         time.Time `json:"nextDeletion"`
+	TimeRemaining        string    `json:"timeRemaining"`
+	TimeRemainingMinutes int64     `json:"timeRemainingMinutes"`
+	Overdue              bool      `json:"overdue"`
+	DryRun               bool      `json:"dryRun"`
 }
 
 // Service orchestrates the heartbeat deadline enforcement. It persists proofs
@@ -108,13 +109,18 @@ func (s *Service) Snapshot(now time.Time) Status {
 	if overdue {
 		remaining = 0
 	}
+	remainingMinutes := int64(0)
+	if remaining > 0 {
+		remainingMinutes = int64((remaining + time.Minute - 1) / time.Minute)
+	}
 
 	return Status{
-		LastProofAt:   last,
-		NextDeletion:  next,
-		TimeRemaining: remaining.String(),
-		Overdue:       overdue,
-		DryRun:        s.dryRun,
+		LastProofAt:          last,
+		NextDeletion:         next,
+		TimeRemaining:        remaining.String(),
+		TimeRemainingMinutes: remainingMinutes,
+		Overdue:              overdue,
+		DryRun:               s.dryRun,
 	}
 }
 

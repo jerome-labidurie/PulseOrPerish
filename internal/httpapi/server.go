@@ -35,7 +35,7 @@ func (s *Server) Router() http.Handler {
 
 	r.Group(func(pr chi.Router) {
 		pr.Use(s.authMiddleware)
-    r.Post("/alive", s.handleAlive)
+		r.Post("/alive", s.handleAlive)
 	})
 
 	return r
@@ -74,10 +74,11 @@ func (s *Server) handleAlive(w http.ResponseWriter, r *http.Request) {
 	}
 	status := s.monitor.Snapshot(time.Now().UTC())
 	writeJSON(w, http.StatusOK, map[string]any{
-		"lastProofAt":   at,
-		"nextDeletion":  status.NextDeletion,
-		"timeRemaining": status.TimeRemaining,
-		"dryRun":        status.DryRun,
+		"lastProofAt":          at,
+		"nextDeletion":         status.NextDeletion,
+		"timeRemaining":        status.TimeRemaining,
+		"timeRemainingMinutes": status.TimeRemainingMinutes,
+		"dryRun":               status.DryRun,
 	})
 }
 
