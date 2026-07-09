@@ -64,6 +64,9 @@ curl -s -X POST "$BASE_URL/alive" \
   --data '{"password":"'${PASSWORD}'"}'
 ```
 
+## Home Assistant
+See [homeassistant.md](./homeassistant.md) for a REST sensor example that imports the remaining time into Home Assistant.
+
 ## Run locally
 ```bash
 mkdir /tmp/pop-data

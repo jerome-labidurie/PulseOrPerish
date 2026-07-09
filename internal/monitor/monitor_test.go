@@ -32,6 +32,9 @@ func TestRegisterProofUpdatesStatus(t *testing.T) {
 	if s.Overdue {
 		t.Fatal("expected non overdue after proof")
 	}
+	if s.TimeRemainingMinutes <= 0 {
+		t.Fatalf("expected positive time remaining minutes after proof, got %d", s.TimeRemainingMinutes)
+	}
 }
 
 func TestRunDoesNotPanicOnCancelledContext(t *testing.T) {
@@ -66,5 +69,48 @@ func TestSnapshotNextDeletionStableWithoutProof(t *testing.T) {
 	}
 	if !second.NextDeletion.Equal(want) {
 		t.Fatalf("unexpected second next deletion: got=%s want=%s", second.NextDeletion, want)
+	}
+}
+
+func TestSnapshotRoundsRemainingMinutesUp(t *testing.T) {
+	d := t.TempDir()
+	st := state.NewStore(filepath.Join(d, "state"))
+	del := delete.NewSafeDeleter(zerolog.Nop(), false)
+	svc := NewService(zerolog.Nop(), st, del, 10*time.Minute, false, filepath.Join(d, "data"))
+	if err := svc.LoadInitialState(); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	svc.mu.Lock()
+	svc.lastProofAt = now.Add(-8*time.Minute - 10*time.Second)
+	svc.mu.Unlock()
+
+	s := svc.Snapshot(now)
+	if s.TimeRemainingMinutes != 2 {
+		t.Fatalf("expected remaining minutes to round up to 2, got %d", s.TimeRemainingMinutes)
+	}
+}
+
+func TestSnapshotSetsRemainingMinutesToZeroWhenOverdue(t *testing.T) {
+	d := t.TempDir()
+	st := state.NewStore(filepath.Join(d, "state"))
+	del := delete.NewSafeDeleter(zerolog.Nop(), false)
+	svc := NewService(zerolog.Nop(), st, del, time.Minute, false, filepath.Join(d, "data"))
+	if err := svc.LoadInitialState(); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	svc.mu.Lock()
+	svc.lastProofAt = now.Add(-2 * time.Minute)
+	svc.mu.Unlock()
+
+	s := svc.Snapshot(now)
+	if !s.Overdue {
+		t.Fatal("expected overdue status")
+	}
+	if s.TimeRemainingMinutes != 0 {
+		t.Fatalf("expected remaining minutes to be 0 when overdue, got %d", s.TimeRemainingMinutes)
 	}
 }
