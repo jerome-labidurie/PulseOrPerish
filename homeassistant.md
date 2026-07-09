@@ -2,6 +2,8 @@
 
 This guide shows how to expose the remaining time from PulseOrPerish as a sensor in Home Assistant.
 
+![HA](./img/homeassistant.png)
+
 It uses the [RESTful Sensor](https://www.home-assistant.io/integrations/sensor.rest/) integration with the public `GET /status` endpoint.
 
 This guide only covers the sensor configuration and the templating needed to turn the JSON response into a Home Assistant-friendly value. It does not cover installing or enabling the REST integration itself.
