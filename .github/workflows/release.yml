@@ -55,7 +55,7 @@ jobs:
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$output" ./cmd/pulseorperish
 
       - name: Upload binary to GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/pulseorperish_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
 
