@@ -49,7 +49,7 @@ func Load(args []string) (Config, error) {
 	dataDir := fs.String("data-dir", envOrDefault("POP_DATA_DIR", ""), "directory whose content will be erased")
 	stateDir := fs.String("state-dir", envOrDefault("POP_STATE_DIR", defaultStateDir), "directory used for persistent state")
 	logPath := fs.String("log-path", envOrDefault("POP_LOG_PATH", defaultLogPath), "log directory (if set, logs are also written to a timestamped file)")
-	logLevel := fs.String("log-level", strings.ToLower(envOrDefault("POP_LOG_LEVEL", defaultLogLevel)), "log level: debug|info|warn|error|critical")
+	logLevel := fs.String("log-level", strings.ToLower(envOrDefault("POP_LOG_LEVEL", defaultLogLevel)), "log level: debug|info|warn|error")
 
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
@@ -95,7 +95,7 @@ func (c Config) Validate() error {
 	if !filepath.IsAbs(c.StateDir) {
 		return errors.New("state-dir must be an absolute path")
 	}
-	if c.LogLevel != "debug" && c.LogLevel != "info" && c.LogLevel != "warn" && c.LogLevel != "error" && c.LogLevel != "critical" {
+	if c.LogLevel != "debug" && c.LogLevel != "info" && c.LogLevel != "warn" && c.LogLevel != "error" {
 		return fmt.Errorf("invalid log-level: %s", c.LogLevel)
 	}
 	return nil
