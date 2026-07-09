@@ -48,7 +48,7 @@ func Load(args []string) (Config, error) {
 	dryRun := fs.Bool("dry-run", boolEnvOrDefault("POP_DRY_RUN", false), "enable dry-run mode (no deletion)")
 	dataDir := fs.String("data-dir", envOrDefault("POP_DATA_DIR", ""), "directory whose content will be erased")
 	stateDir := fs.String("state-dir", envOrDefault("POP_STATE_DIR", defaultStateDir), "directory used for persistent state")
-	logPath := fs.String("log-path", envOrDefault("POP_LOG_PATH", defaultLogPath), "log file path (empty for stdout)")
+	logPath := fs.String("log-path", envOrDefault("POP_LOG_PATH", defaultLogPath), "log directory (if set, logs are also written to a timestamped file)")
 	logLevel := fs.String("log-level", strings.ToLower(envOrDefault("POP_LOG_LEVEL", defaultLogLevel)), "log level: debug|info|warn|error|critical")
 
 	if err := fs.Parse(args); err != nil {
