@@ -79,12 +79,8 @@ func TestAliveRequiresPassword(t *testing.T) {
 	}
 }
 
-func TestAliveWithPasswordField(t *testing.T) {
-	h := newTestServer(t)
-	r := httptest.NewRequest(http.MethodPost, "/alive", bytes.NewBufferString(`{"password":"secret"}`))
-	r.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
+func assertAliveSuccess(t *testing.T, w *httptest.ResponseRecorder) {
+	t.Helper()
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
@@ -108,13 +104,29 @@ func TestAliveWithPasswordField(t *testing.T) {
 	}
 }
 
-func TestAliveWithBearerStillWorks(t *testing.T) {
+func TestAliveWithPasswordField(t *testing.T) {
+	h := newTestServer(t)
+	r := httptest.NewRequest(http.MethodPost, "/alive", bytes.NewBufferString(`{"password":"secret"}`))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	assertAliveSuccess(t, w)
+}
+
+func TestAliveWithForm(t *testing.T) {
+	h := newTestServer(t)
+	r := httptest.NewRequest(http.MethodPost, "/alive", strings.NewReader("password=secret"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	assertAliveSuccess(t, w)
+}
+
+func TestAliveWithBearer(t *testing.T) {
 	h := newTestServer(t)
 	r := httptest.NewRequest(http.MethodPost, "/alive", nil)
 	r.Header.Set("Authorization", "Bearer secret")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
+	assertAliveSuccess(t, w)
 }
