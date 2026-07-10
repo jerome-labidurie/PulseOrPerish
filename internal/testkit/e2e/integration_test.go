@@ -2,8 +2,19 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -20,7 +31,44 @@ const (
 	// maxDeletionWait is how long we wait for files to be deleted after the deadline.
 	// = testInterval + 1 monitor tick (1min max) + safety margin
 	maxDeletionWait = testInterval + 70*time.Second
+
+	// fastDeletionInterval is used by robustness deletion tests to trigger deletion
+	// on the first monitor tick (~1 minute).
+	fastDeletionInterval = 30 * time.Second
+	fastDeletionWait     = 95 * time.Second
 )
+
+func requireAppStillHealthy(t *testing.T, listenAddr string) {
+	t.Helper()
+	resp, err := http.Get("http://" + listenAddr + "/health")
+	if err != nil {
+		t.Fatalf("health request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected /health=200, got %d", resp.StatusCode)
+	}
+}
+
+func doAliveRaw(t *testing.T, listenAddr string, headers map[string]string, body io.Reader) (int, map[string]any) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, "http://"+listenAddr+"/alive", body)
+	if err != nil {
+		t.Fatalf("failed creating request: %v", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	var payload map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&payload)
+	return resp.StatusCode, payload
+}
 
 func nextListenAddr(t *testing.T) string {
 	t.Helper()
@@ -357,4 +405,321 @@ func TestDryRunModePreventsDeletion(t *testing.T) {
 	}
 
 	t.Log("PASS: Dry-run mode prevents file deletion")
+}
+
+func TestRobustnessConcurrentProofOfLifeRequests(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	listenAddr := nextListenAddr(t)
+	env := SetupTestEnv(t)
+	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
+	if err != nil {
+		t.Fatalf("failed to start app: %v", err)
+	}
+	defer app.Stop()
+
+	client := NewAppClient(t, listenAddr, password)
+	files := CreateTestFiles(t, env.DataDir, 5)
+	AssertFilesExist(t, files)
+
+	var failed int32
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 4; j++ {
+				if _, err := client.ProofOfLife(ctx); err != nil {
+					atomic.AddInt32(&failed, 1)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if failed > 0 {
+		t.Fatalf("expected no proof failures, got %d", failed)
+	}
+
+	status, err := client.GetStatus(ctx)
+	if err != nil {
+		t.Fatalf("failed to get status: %v", err)
+	}
+	if overdue, ok := status["overdue"].(bool); !ok || overdue {
+		t.Fatalf("expected overdue=false after concurrent proofs, got %#v", status["overdue"])
+	}
+	AssertFilesExist(t, files)
+}
+
+func TestRobustnessAuthenticationEdgeCases(t *testing.T) {
+	listenAddr := nextListenAddr(t)
+	env := SetupTestEnv(t)
+	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
+	if err != nil {
+		t.Fatalf("failed to start app: %v", err)
+	}
+	defer app.Stop()
+
+	code, _ := doAliveRaw(t, listenAddr, map[string]string{"Authorization": "Bearer   " + password}, nil)
+	if code != http.StatusOK {
+		t.Fatalf("expected bearer with extra spaces to succeed, got %d", code)
+	}
+
+	code, _ = doAliveRaw(t, listenAddr, map[string]string{"Authorization": "Bearer " + strings.ToUpper(password)}, nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("expected wrong-case bearer to fail, got %d", code)
+	}
+
+	code, _ = doAliveRaw(t, listenAddr, map[string]string{"Content-Type": "application/json"}, strings.NewReader(`{"password":"`+password+`"}`))
+	if code != http.StatusOK {
+		t.Fatalf("expected json auth to succeed, got %d", code)
+	}
+
+	code, _ = doAliveRaw(t, listenAddr, map[string]string{"Content-Type": "application/x-www-form-urlencoded"}, strings.NewReader(url.Values{"password": []string{password}}.Encode()))
+	if code != http.StatusOK {
+		t.Fatalf("expected form auth to succeed, got %d", code)
+	}
+
+	code, _ = doAliveRaw(t, listenAddr, map[string]string{
+		"Authorization": "Bearer wrong",
+		"Content-Type":  "application/json",
+	}, strings.NewReader(`{"password":"`+password+`"}`))
+	if code != http.StatusUnauthorized {
+		t.Fatalf("expected bearer precedence (wrong bearer) to fail, got %d", code)
+	}
+
+	code, _ = doAliveRaw(t, listenAddr, map[string]string{"Content-Type": "application/json"}, strings.NewReader(`{"password":""}`))
+	if code != http.StatusUnauthorized {
+		t.Fatalf("expected empty json password to fail, got %d", code)
+	}
+
+	code, _ = doAliveRaw(t, listenAddr, map[string]string{"Content-Type": "application/json"}, strings.NewReader(`{"other":"x"}`))
+	if code != http.StatusUnauthorized {
+		t.Fatalf("expected missing json password to fail, got %d", code)
+	}
+}
+
+func TestRobustnessStateFileCorruptionRecovery(t *testing.T) {
+	listenAddr := nextListenAddr(t)
+	env := SetupTestEnv(t)
+
+	if err := os.WriteFile(filepath.Join(env.StateDir, "heartbeat_state.json"), []byte("{invalid json"), 0o600); err != nil {
+		t.Fatalf("failed to write corrupted state: %v", err)
+	}
+
+	_, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
+	if err == nil {
+		t.Fatal("expected startup to fail with corrupted state file")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "ready") && !strings.Contains(strings.ToLower(err.Error()), "exited") {
+		t.Fatalf("unexpected startup failure for corrupted state: %v", err)
+	}
+}
+
+func TestRobustnessHealthCheckResponsivenessUnderLoad(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	listenAddr := nextListenAddr(t)
+	env := SetupTestEnv(t)
+	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
+	if err != nil {
+		t.Fatalf("failed to start app: %v", err)
+	}
+	defer app.Stop()
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	var maxHealthLatency int64
+	errCh := make(chan error, 64)
+	var wg sync.WaitGroup
+
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			deadline := time.Now().Add(6 * time.Second)
+			for time.Now().Before(deadline) {
+				start := time.Now()
+				resp, err := client.Get("http://" + listenAddr + "/health")
+				if err != nil {
+					errCh <- fmt.Errorf("health request failed: %w", err)
+					return
+				}
+				_ = resp.Body.Close()
+				if resp.StatusCode != http.StatusOK {
+					errCh <- fmt.Errorf("health status=%d", resp.StatusCode)
+					return
+				}
+				lat := time.Since(start).Milliseconds()
+				for {
+					prev := atomic.LoadInt64(&maxHealthLatency)
+					if lat <= prev || atomic.CompareAndSwapInt64(&maxHealthLatency, prev, lat) {
+						break
+					}
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		}()
+	}
+
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			deadline := time.Now().Add(6 * time.Second)
+			for time.Now().Before(deadline) {
+				resp, err := client.Get("http://" + listenAddr + "/status")
+				if err != nil {
+					errCh <- fmt.Errorf("status request failed: %w", err)
+					return
+				}
+				_ = resp.Body.Close()
+				if resp.StatusCode != http.StatusOK {
+					errCh <- fmt.Errorf("status code=%d", resp.StatusCode)
+					return
+				}
+				time.Sleep(150 * time.Millisecond)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
+	}
+	if atomic.LoadInt64(&maxHealthLatency) > 750 {
+		t.Fatalf("health latency too high: %dms", atomic.LoadInt64(&maxHealthLatency))
+	}
+	requireAppStillHealthy(t, listenAddr)
+	_ = ctx
+}
+
+func TestRobustnessPermissionRevocationMidOperation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission mode manipulation is not portable on windows")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	listenAddr := nextListenAddr(t)
+	env := SetupTestEnv(t)
+	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
+	if err != nil {
+		t.Fatalf("failed to start app: %v", err)
+	}
+	defer app.Stop()
+
+	client := NewAppClient(t, listenAddr, password)
+	if _, err := client.ProofOfLife(ctx); err != nil {
+		t.Fatalf("first proof failed: %v", err)
+	}
+
+	if err := os.Chmod(env.StateDir, 0o500); err != nil {
+		t.Fatalf("failed to revoke write permissions: %v", err)
+	}
+	defer os.Chmod(env.StateDir, 0o755)
+
+	if _, err := client.ProofOfLife(ctx); err == nil {
+		t.Fatal("expected proof to fail when state directory is read-only")
+	}
+
+	if err := os.Chmod(env.StateDir, 0o755); err != nil {
+		t.Fatalf("failed to restore permissions: %v", err)
+	}
+
+	if _, err := client.ProofOfLife(ctx); err != nil {
+		t.Fatalf("proof should recover after permission restore: %v", err)
+	}
+	requireAppStillHealthy(t, listenAddr)
+}
+
+func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink and fifo behavior differs on windows")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	listenAddr := nextListenAddr(t)
+	env := SetupTestEnv(t)
+
+	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, fastDeletionInterval)
+	if err != nil {
+		t.Fatalf("failed to start app: %v", err)
+	}
+	defer app.Stop()
+
+	outsideDir := t.TempDir()
+	outsideFile := CreateTestFile(t, outsideDir, "outside.txt")
+
+	innerDir := filepath.Join(env.DataDir, "nested")
+	if err := os.MkdirAll(innerDir, 0o755); err != nil {
+		t.Fatalf("failed to create inner dir: %v", err)
+	}
+	CreateTestFile(t, env.DataDir, "root.txt")
+	CreateTestFile(t, innerDir, "inner.txt")
+
+	if err := os.Symlink(outsideFile, filepath.Join(env.DataDir, "outside-file-link")); err != nil {
+		t.Fatalf("failed to create file symlink: %v", err)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(env.DataDir, "outside-dir-link")); err != nil {
+		t.Fatalf("failed to create dir symlink: %v", err)
+	}
+
+	// Best-effort special file: a FIFO if supported.
+	_ = syscall.Mkfifo(filepath.Join(env.DataDir, "event.pipe"), 0o600)
+
+	client := NewAppClient(t, listenAddr, password)
+	if _, err := client.ProofOfLife(ctx); err != nil {
+		t.Fatalf("failed to send proof: %v", err)
+	}
+
+	if err := WaitForDirEmpty(ctx, env.DataDir, fastDeletionWait); err != nil {
+		t.Fatalf("data dir not cleared for symlink/special files: %v\nstdout: %s", err, app.Stdout())
+	}
+
+	if _, err := os.Stat(outsideFile); err != nil {
+		t.Fatalf("outside target should not be deleted through symlink: %v", err)
+	}
+	requireAppStillHealthy(t, listenAddr)
+}
+
+func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	listenAddr := nextListenAddr(t)
+	env := SetupTestEnv(t)
+
+	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, fastDeletionInterval)
+	if err != nil {
+		t.Fatalf("failed to start app: %v", err)
+	}
+	defer app.Stop()
+
+	nested := []string{
+		filepath.Join(env.DataDir, "a"),
+		filepath.Join(env.DataDir, "a", "b"),
+		filepath.Join(env.DataDir, "a", "b", "c"),
+		filepath.Join(env.DataDir, "x", "y"),
+	}
+	for _, dir := range nested {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("failed to create nested dir %s: %v", dir, err)
+		}
+		CreateTestFile(t, dir, "f.txt")
+	}
+	CreateTestFile(t, env.DataDir, "root.txt")
+
+	client := NewAppClient(t, listenAddr, password)
+	if _, err := client.ProofOfLife(ctx); err != nil {
+		t.Fatalf("failed to send proof: %v", err)
+	}
+
+	if err := WaitForDirEmpty(ctx, env.DataDir, fastDeletionWait); err != nil {
+		t.Fatalf("nested directory content not deleted: %v\nstdout: %s", err, app.Stdout())
+	}
+	AssertDirIsEmpty(t, env.DataDir)
+	requireAppStillHealthy(t, listenAddr)
 }
