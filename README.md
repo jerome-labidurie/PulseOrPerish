@@ -1,5 +1,10 @@
 # PulseOrPerish
 
+[![CI](https://github.com/jerome-labidurie/PulseOrPerish/actions/workflows/ci.yml/badge.svg)](https://github.com/jerome-labidurie/PulseOrPerish/actions/workflows/ci.yml)
+[![Release](https://github.com/jerome-labidurie/PulseOrPerish/actions/workflows/release.yml/badge.svg)](https://github.com/jerome-labidurie/PulseOrPerish/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/jerome-labidurie/PulseOrPerish)](https://github.com/jerome-labidurie/PulseOrPerish/releases/latest)
+[![Docker image](https://img.shields.io/badge/ghcr.io-pulseorperish-blue?logo=docker)](https://github.com/jerome-labidurie/PulseOrPerish/pkgs/container/pulseorperish)
+
 Dead man switch in Go.
 
 Protect what matters with a simple heartbeat: as long as you are alive, your data stays safe; if you stop checking in, **PulseOrPerish** automatically wipes the target directory. Lightweight, self-hosted, and ready in minutes with a web UI, API, and container support.
