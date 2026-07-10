@@ -43,7 +43,19 @@ func (s *Server) Router() http.Handler {
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := s.extractPassword(r)
+		var token string
+		if auth := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(auth, "Bearer ") {
+			token = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+		} else if strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
+			var payload struct {
+				Password string `json:"password"`
+			}
+			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&payload); err == nil {
+				token = strings.TrimSpace(payload.Password)
+			}
+		} else if err := r.ParseForm(); err == nil {
+			token = strings.TrimSpace(r.FormValue("password"))
+		}
 		if subtle.ConstantTimeCompare([]byte(token), []byte(s.password)) != 1 {
 			s.log.Warn().Str("remote", r.RemoteAddr).Msg("authentication failed")
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid password"})
@@ -70,38 +82,6 @@ func (s *Server) handleAlive(w http.ResponseWriter, r *http.Request) {
 		"timeRemainingMinutes": status.TimeRemainingMinutes,
 		"dryRun":               status.DryRun,
 	})
-}
-
-func (s *Server) authenticateRequest(r *http.Request) bool {
-	provided := s.extractPassword(r)
-	if provided == "" {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(provided), []byte(s.password)) == 1
-}
-
-func (s *Server) extractPassword(r *http.Request) string {
-	auth := strings.TrimSpace(r.Header.Get("Authorization"))
-	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
-	}
-
-	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
-	if strings.Contains(contentType, "application/json") {
-		var payload struct {
-			Password string `json:"password"`
-		}
-		dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
-		if err := dec.Decode(&payload); err == nil {
-			return strings.TrimSpace(payload.Password)
-		}
-		return ""
-	}
-
-	if err := r.ParseForm(); err == nil {
-		return strings.TrimSpace(r.FormValue("password"))
-	}
-	return ""
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
