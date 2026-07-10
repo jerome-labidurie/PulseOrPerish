@@ -1,3 +1,4 @@
+// Package main contains the PulseOrPerish application entrypoint.
 package main
 
 import (
@@ -41,6 +42,7 @@ func validateDataDirPermissions(log zerolog.Logger, dataDir string) error {
 	return nil
 }
 
+// main wires configuration, logging, monitoring and the HTTP server lifecycle.
 func main() {
 	cfg, err := config.Load(os.Args[1:])
 	if err != nil {

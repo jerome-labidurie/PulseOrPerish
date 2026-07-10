@@ -1,3 +1,4 @@
+// Package e2e contains end-to-end test helpers and fixtures.
 package e2e
 
 import (

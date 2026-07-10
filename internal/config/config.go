@@ -109,6 +109,7 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// envOrDefault returns the trimmed environment value or fallback when empty.
 func envOrDefault(key, fallback string) string {
 	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {
@@ -117,6 +118,7 @@ func envOrDefault(key, fallback string) string {
 	return v
 }
 
+// durationEnvOrDefault parses a duration from env or returns fallback on failure.
 func durationEnvOrDefault(key string, fallback time.Duration) time.Duration {
 	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {
@@ -129,6 +131,7 @@ func durationEnvOrDefault(key string, fallback time.Duration) time.Duration {
 	return d
 }
 
+// boolEnvOrDefault parses a boolean from env or returns fallback on failure.
 func boolEnvOrDefault(key string, fallback bool) bool {
 	v := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
 	if v == "" {

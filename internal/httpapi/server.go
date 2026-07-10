@@ -1,3 +1,4 @@
+// Package httpapi exposes the HTTP routes used by the web UI and REST API.
 package httpapi
 
 import (
@@ -20,10 +21,12 @@ type Server struct {
 	monitor  *monitor.Service
 }
 
+// NewServer builds an HTTP API server bound to a monitor service.
 func NewServer(log zerolog.Logger, password string, m *monitor.Service) *Server {
 	return &Server{log: log, password: password, monitor: m}
 }
 
+// Router returns the HTTP handler that serves health, status, UI and alive routes.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 
@@ -41,6 +44,7 @@ func (s *Server) Router() http.Handler {
 	return r
 }
 
+// authMiddleware checks password credentials from bearer, JSON body or form data.
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var token string
@@ -65,6 +69,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// handleAlive records a proof-of-life event and returns the updated status.
 func (s *Server) handleAlive(w http.ResponseWriter, r *http.Request) {
 	s.log.Debug().Str("remote", r.RemoteAddr).Msg("proof of life request")
 
@@ -84,16 +89,19 @@ func (s *Server) handleAlive(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleStatus returns the current monitor snapshot as JSON.
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.log.Debug().Str("remote", r.RemoteAddr).Msg("status request")
 	writeJSON(w, http.StatusOK, s.monitor.Snapshot(time.Now().UTC()))
 }
 
+// handleIndex serves the embedded web UI HTML document.
 func (s *Server) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(indexHTML))
 }
 
+// writeJSON encodes payload as JSON with the provided HTTP status code.
 func writeJSON(w http.ResponseWriter, code int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)

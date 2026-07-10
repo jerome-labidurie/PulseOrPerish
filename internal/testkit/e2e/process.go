@@ -66,6 +66,7 @@ func StartAppWithDryRun(t *testing.T, listenAddr, dataDir, stateDir, password st
 	return startAppWithOptions(t, listenAddr, dataDir, stateDir, password, interval, true)
 }
 
+// ensureBuiltBinary builds the app binary once and returns its cached path.
 func ensureBuiltBinary() (string, error) {
 	buildOnce.Do(func() {
 		projectRoot, err := findProjectRoot()
@@ -107,6 +108,7 @@ func ensureBuiltBinary() (string, error) {
 	return builtBinaryPath, nil
 }
 
+// startAppWithOptions starts the app process with optional dry-run mode.
 func startAppWithOptions(t *testing.T, listenAddr, dataDir, stateDir, password string, interval time.Duration, dryRun bool) (*AppProcess, error) {
 	t.Helper()
 

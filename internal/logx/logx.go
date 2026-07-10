@@ -46,6 +46,7 @@ func New(level, path string) (zerolog.Logger, io.Closer, error) {
 	return logger, c, nil
 }
 
+// parseLevel converts a user-provided level string into a zerolog level.
 func parseLevel(level string) (zerolog.Level, error) {
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "debug":
