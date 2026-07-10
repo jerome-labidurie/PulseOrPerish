@@ -57,6 +57,6 @@ func parseLevel(level string) (zerolog.Level, error) {
 	case "error":
 		return zerolog.ErrorLevel, nil
 	default:
-		return zerolog.InfoLevel, nil
+		return zerolog.InfoLevel, fmt.Errorf("invalid log-level: %q", level)
 	}
 }
