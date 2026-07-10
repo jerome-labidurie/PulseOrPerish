@@ -1,0 +1,33 @@
+# Binaries
+pulseorperish
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build output
+dist/
+bin/
+out/
+
+# Test coverage
+*.out
+coverage.html
+*.coverprofile
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+*.tmp
+*.bak
+.env.local
+
+# Go
+vendor/
+go.sum.lock
