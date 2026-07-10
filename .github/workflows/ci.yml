@@ -27,7 +27,7 @@ jobs:
           cache: true
 
       - name: Build binary
-        run: go build ./cmd/pulseorperish
+        run: go build -ldflags="-X main.Version=dev" ./cmd/pulseorperish
 
       - name: Run unit tests (excluding e2e)
         shell: bash
