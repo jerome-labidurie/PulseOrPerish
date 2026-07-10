@@ -52,3 +52,58 @@ sensor:
       - overdue
       - dryRun
 ```
+
+## Automation: Alerts at 10d, 5d and 1d
+
+The example below uses one automation with three triggers and shared actions.
+
+Each alert sends:
+- a notification to your mobile app
+- a persistent notification in the Home Assistant interface
+
+Replace `notify.mobile_app_your_phone` with your real mobile notify entity.
+
+```yaml
+automation:
+  - id: pulseorperish_notify_before_deletion
+    alias: PulseOrPerish - Notify before deletion
+    description: Sends mobile + HA UI notifications at T-10, T-5 and T-1 days.
+    mode: single
+    trigger:
+      - platform: numeric_state
+        id: t_minus_10d
+        entity_id: sensor.pulseorperish_remaining_time
+        below: 14400
+        above: 7200
+      - platform: numeric_state
+        id: t_minus_5d
+        entity_id: sensor.pulseorperish_remaining_time
+        below: 7200
+        above: 1440
+      - platform: numeric_state
+        id: t_minus_1d
+        entity_id: sensor.pulseorperish_remaining_time
+        below: 1440
+        above: 0
+    action:
+      - variables:
+          days_left: >-
+            {% set map = {'t_minus_10d': 10, 't_minus_5d': 5, 't_minus_1d': 1} %}
+            {{ map.get(trigger.id, '?') }}
+          severity_label: >-
+            {% set map = {'t_minus_10d': 'warning', 't_minus_5d': 'warning', 't_minus_1d': 'critical warning'} %}
+            {{ map.get(trigger.id, 'warning') }}
+      - action: notify.send_message
+        target:
+          entity_id: notify.mobile_app_your_phone
+        data:
+          message: >-
+            PulseOrPerish: {{ days_left }} day{{ '' if days_left in ['1', 1] else 's' }} remaining before deletion.
+            Next deletion: {{ state_attr('sensor.pulseorperish_remaining_time', 'nextDeletion') }}
+      - action: notify.persistent_notification
+        data:
+          title: PulseOrPerish {{ severity_label }}
+          message: >-
+            {{ days_left }} day{{ '' if days_left in ['1', 1] else 's' }} remaining before deletion.
+            Next deletion: {{ state_attr('sensor.pulseorperish_remaining_time', 'nextDeletion') }}
+```
