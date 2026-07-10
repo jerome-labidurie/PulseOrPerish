@@ -21,6 +21,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// Version, BuildDate, and CommitHash are set during build via ldflags.
+var (
+	Version    = "dev"
+	BuildDate  = "unknown"
+	CommitHash = "unknown"
+)
+
 // validateDataDirPermissions verifies that the process can create and remove a
 // file inside dataDir. It returns an error if either operation fails, allowing
 // the program to fail fast before the first deletion attempt.
@@ -44,6 +51,14 @@ func validateDataDirPermissions(log zerolog.Logger, dataDir string) error {
 
 // main wires configuration, logging, monitoring and the HTTP server lifecycle.
 func main() {
+	// Handle -version flag early
+	for _, arg := range os.Args[1:] {
+		if arg == "-version" {
+			fmt.Printf("PulseOrPerish version %s (built %s, commit %s)\n", Version, BuildDate, CommitHash)
+			os.Exit(0)
+		}
+	}
+
 	cfg, err := config.Load(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
@@ -72,7 +87,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("failed loading state")
 	}
 
-	srv := httpapi.NewServer(logger, cfg.Password, mon)
+	srv := httpapi.NewServer(logger, cfg.Password, mon, Version, BuildDate, CommitHash)
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           srv.Router(),
@@ -90,7 +105,7 @@ func main() {
 		_ = httpServer.Shutdown(sctx)
 	}()
 
-	logger.Info().Str("listen", cfg.ListenAddr).Dur("interval", cfg.Interval).Dur("tick", mon.Tick()).Bool("dryRun", cfg.DryRun).Str("dataDir", cfg.DataDir).Str("stateDir", cfg.StateDir).Msg("PulseOrPerish started")
+	logger.Info().Str("version", Version).Str("buildDate", BuildDate).Str("commit", CommitHash).Str("listen", cfg.ListenAddr).Dur("interval", cfg.Interval).Dur("tick", mon.Tick()).Bool("dryRun", cfg.DryRun).Str("dataDir", cfg.DataDir).Str("stateDir", cfg.StateDir).Msg("PulseOrPerish started")
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatal().Err(err).Msg("http server failed")
 	}

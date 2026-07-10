@@ -3,7 +3,9 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/pulseorperish ./cmd/pulseorperish
+RUN BUILD_DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ') && \
+    COMMIT=$(git rev-parse --short HEAD) && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o /out/pulseorperish ./cmd/pulseorperish
 
 FROM gcr.io/distroless/static-debian13
 WORKDIR /

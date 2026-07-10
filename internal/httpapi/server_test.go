@@ -25,7 +25,7 @@ func newTestServer(t *testing.T) http.Handler {
 	if err := m.LoadInitialState(); err != nil {
 		t.Fatal(err)
 	}
-	s := NewServer(zerolog.Nop(), "secret", m)
+	s := NewServer(zerolog.Nop(), "secret", m, "test", "2026-07-10", "abc123")
 	return s.Router()
 }
 

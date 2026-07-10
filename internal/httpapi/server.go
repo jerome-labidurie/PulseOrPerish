@@ -4,6 +4,7 @@ package httpapi
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -16,14 +17,26 @@ import (
 )
 
 type Server struct {
-	log      zerolog.Logger
-	password string
-	monitor  *monitor.Service
+	log        zerolog.Logger
+	password   string
+	monitor    *monitor.Service
+	version    string
+	buildDate  string
+	commitHash string
 }
 
 // NewServer builds an HTTP API server bound to a monitor service.
-func NewServer(log zerolog.Logger, password string, m *monitor.Service) *Server {
-	return &Server{log: log, password: password, monitor: m}
+func NewServer(log zerolog.Logger, password string, m *monitor.Service, version, buildDate, commitHash string) *Server {
+	return &Server{log: log, password: password, monitor: m, version: version, buildDate: buildDate, commitHash: commitHash}
+}
+
+// getIndexHTML returns the HTML template with version information injected.
+func (s *Server) getIndexHTML() string {
+	versionHTML := fmt.Sprintf(
+		`<footer style="margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--field-border); text-align: center; font-size: 12px; color: var(--muted);">%s (built %s, commit %s)</footer>`,
+		s.version, s.buildDate, s.commitHash,
+	)
+	return indexHTML + versionHTML
 }
 
 // Router returns the HTTP handler that serves health, status, UI and alive routes.
@@ -98,7 +111,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 // handleIndex serves the embedded web UI HTML document.
 func (s *Server) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(indexHTML))
+	_, _ = w.Write([]byte(s.getIndexHTML()))
 }
 
 // writeJSON encodes payload as JSON with the provided HTTP status code.
