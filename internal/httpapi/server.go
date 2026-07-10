@@ -106,12 +106,7 @@ func (s *Server) extractPassword(r *http.Request) string {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.log.Debug().Str("remote", r.RemoteAddr).Msg("status request")
-	st := s.monitor.Snapshot(time.Now().UTC())
-	if strings.Contains(r.Header.Get("Accept"), "application/json") || r.URL.Path == "/status" {
-		writeJSON(w, http.StatusOK, st)
-		return
-	}
-	writeJSON(w, http.StatusOK, st)
+	writeJSON(w, http.StatusOK, s.monitor.Snapshot(time.Now().UTC()))
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, _ *http.Request) {
