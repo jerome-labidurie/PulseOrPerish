@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,6 +46,16 @@ func TestIndexNoAuth(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if contentType := w.Header().Get("Content-Type"); contentType != "text/html; charset=utf-8" {
+		t.Fatalf("expected html content type, got %q", contentType)
+	}
+	if !strings.Contains(body, "@media (prefers-color-scheme: dark)") {
+		t.Fatal("expected index page to support system dark mode")
+	}
+	if !strings.Contains(body, "color-scheme: light dark;") {
+		t.Fatal("expected index page to advertise light and dark color schemes")
 	}
 }
 

@@ -11,8 +11,16 @@ Protect what matters with a simple heartbeat: as long as you are alive, your dat
 - Automatic data directory content wipe when deadline is exceeded
 - Configurable via CLI flags and environment variables
 - Distroless-compatible container image
+- Dark mode
 
-![webui](./img/webui.png)
+<p>
+  <a href="./img/webui_light.png">
+    <img src="./img/webui_light.png" alt="PulseOrPerish web UI light mode" width="320" />
+  </a>
+  <a href="./img/webui_dark.png">
+    <img src="./img/webui_dark.png" alt="PulseOrPerish web UI dark mode" width="320" />
+  </a>
+</p>
 
 ## Configuration
 Priority: flags > environment variables > defaults.
@@ -27,6 +35,9 @@ Priority: flags > environment variables > defaults.
 | Log directory | `POP_LOG_PATH` | `--log-path` | (stdout only) | `/var/log/pop/` (directory; if set, a timestamped file is also created) |
 | Log level | `POP_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
 | HTTP listen address | `POP_LISTEN` | `--listen` | `:8080` | `:8086`, `0.0.0.0:8080` |
+
+## Home Assistant
+See [homeassistant.md](./homeassistant.md) for a REST sensor example that imports the remaining time into Home Assistant.
 
 ## API
 - `GET /` no auth, HTTP UI
@@ -63,9 +74,6 @@ curl -s -X POST "$BASE_URL/alive" \
   -H "Content-Type: application/json" \
   --data '{"password":"'${PASSWORD}'"}'
 ```
-
-## Home Assistant
-See [homeassistant.md](./homeassistant.md) for a REST sensor example that imports the remaining time into Home Assistant.
 
 ## Run locally
 ```bash

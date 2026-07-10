@@ -143,12 +143,46 @@ const indexHTML = `<!doctype html>
   <title>PulseOrPerish</title>
   <style>
     :root {
-      --bg-a: #0f172a;
-      --bg-b: #1d4ed8;
+      color-scheme: light dark;
+      --bg-a: #e2e8f0;
+      --bg-b: #bfdbfe;
+      --glow-a: rgba(59,130,246,0.28);
+      --glow-b: rgba(239,68,68,0.24);
       --panel: rgba(255,255,255,0.92);
       --ink: #0b1320;
+      --muted: #475569;
+      --field-bg: rgba(255,255,255,0.9);
+      --field-border: #cbd5e1;
       --accent: #ef4444;
+      --secondary: #0ea5e9;
       --ok: #16a34a;
+      --status-bg: #e2e8f0;
+      --status-ok-bg: #dcfce7;
+      --status-ok-ink: #14532d;
+      --status-bad-bg: #fee2e2;
+      --status-bad-ink: #7f1d1d;
+      --shadow: rgba(15,23,42,0.18);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-a: #020617;
+        --bg-b: #0f172a;
+        --glow-a: rgba(30,64,175,0.24);
+        --glow-b: rgba(185,28,28,0.18);
+        --panel: rgba(15,23,42,0.78);
+        --ink: #cbd5e1;
+        --muted: #94a3b8;
+        --field-bg: rgba(15,23,42,0.62);
+        --field-border: rgba(148,163,184,0.42);
+        --accent: #b91c1c;
+        --secondary: #0369a1;
+        --status-bg: rgba(226,232,240,0.12);
+        --status-ok-bg: rgba(22,163,74,0.18);
+        --status-ok-ink: #bbf7d0;
+        --status-bad-bg: rgba(239,68,68,0.18);
+        --status-bad-ink: #fecaca;
+        --shadow: rgba(2,6,23,0.45);
+      }
     }
     * { box-sizing: border-box; }
     body {
@@ -156,8 +190,8 @@ const indexHTML = `<!doctype html>
       min-height: 100vh;
       font-family: "Segoe UI", "Helvetica Neue", sans-serif;
       color: var(--ink);
-      background: radial-gradient(circle at 10% 20%, #93c5fd 0%, transparent 35%),
-                  radial-gradient(circle at 90% 10%, #fca5a5 0%, transparent 30%),
+      background: radial-gradient(circle at 10% 20%, var(--glow-a) 0%, transparent 35%),
+                  radial-gradient(circle at 90% 10%, var(--glow-b) 0%, transparent 30%),
                   linear-gradient(140deg, var(--bg-a), var(--bg-b));
       display: grid;
       place-items: center;
@@ -168,23 +202,28 @@ const indexHTML = `<!doctype html>
       background: var(--panel);
       border-radius: 18px;
       padding: 24px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      box-shadow: 0 20px 60px var(--shadow);
       animation: rise .5s ease;
+      backdrop-filter: blur(14px);
     }
     @keyframes rise {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
     }
     h1 { margin-top: 0; }
+    p { color: var(--muted); }
     .row { display: flex; gap: 10px; flex-wrap: wrap; }
     input {
       flex: 1;
       min-width: 220px;
-      border: 1px solid #d1d5db;
+      border: 1px solid var(--field-border);
       border-radius: 10px;
       padding: 12px;
       font-size: 16px;
+      color: var(--ink);
+      background: var(--field-bg);
     }
+    input::placeholder { color: var(--muted); }
     button {
       border: 0;
       border-radius: 10px;
@@ -197,16 +236,16 @@ const indexHTML = `<!doctype html>
       transition: transform .12s ease, filter .12s ease;
     }
     button:hover { transform: translateY(-1px); filter: brightness(1.05); }
-    .secondary { background: #0ea5e9; }
+    .secondary { background: var(--secondary); }
     .status {
       margin-top: 16px;
       border-radius: 10px;
       padding: 12px;
-      background: #e5e7eb;
+      background: var(--status-bg);
     }
-    .ok { background: #dcfce7; color: #14532d; }
-    .bad { background: #fee2e2; color: #7f1d1d; }
-    .meta { margin-top: 10px; font-size: 14px; opacity: 0.9; }
+    .ok { background: var(--status-ok-bg); color: var(--status-ok-ink); }
+    .bad { background: var(--status-bad-bg); color: var(--status-bad-ink); }
+    .meta { margin-top: 10px; font-size: 14px; color: var(--muted); }
   </style>
 </head>
 <body>
