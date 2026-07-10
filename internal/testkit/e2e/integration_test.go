@@ -423,6 +423,7 @@ func TestRobustnessConcurrentProofOfLifeRequests(t *testing.T) {
 	files := CreateTestFiles(t, env.DataDir, 5)
 	AssertFilesExist(t, files)
 
+	t.Log("Sending 40 concurrent proof-of-life requests (10 goroutines × 4 requests)...")
 	var failed int32
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -450,6 +451,7 @@ func TestRobustnessConcurrentProofOfLifeRequests(t *testing.T) {
 		t.Fatalf("expected overdue=false after concurrent proofs, got %#v", status["overdue"])
 	}
 	AssertFilesExist(t, files)
+	t.Logf("PASS: 40 concurrent proofs accepted, overdue=false, nextDeletion=%v", status["nextDeletion"])
 }
 
 func TestRobustnessAuthenticationEdgeCases(t *testing.T) {
@@ -465,21 +467,25 @@ func TestRobustnessAuthenticationEdgeCases(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("expected bearer with extra spaces to succeed, got %d", code)
 	}
+	t.Log("bearer with extra spaces: OK")
 
 	code, _ = doAliveRaw(t, listenAddr, map[string]string{"Authorization": "Bearer " + strings.ToUpper(password)}, nil)
 	if code != http.StatusUnauthorized {
 		t.Fatalf("expected wrong-case bearer to fail, got %d", code)
 	}
+	t.Log("wrong-case bearer: correctly rejected")
 
 	code, _ = doAliveRaw(t, listenAddr, map[string]string{"Content-Type": "application/json"}, strings.NewReader(`{"password":"`+password+`"}`))
 	if code != http.StatusOK {
 		t.Fatalf("expected json auth to succeed, got %d", code)
 	}
+	t.Log("json body auth: OK")
 
 	code, _ = doAliveRaw(t, listenAddr, map[string]string{"Content-Type": "application/x-www-form-urlencoded"}, strings.NewReader(url.Values{"password": []string{password}}.Encode()))
 	if code != http.StatusOK {
 		t.Fatalf("expected form auth to succeed, got %d", code)
 	}
+	t.Log("form auth: OK")
 
 	code, _ = doAliveRaw(t, listenAddr, map[string]string{
 		"Authorization": "Bearer wrong",
@@ -488,22 +494,27 @@ func TestRobustnessAuthenticationEdgeCases(t *testing.T) {
 	if code != http.StatusUnauthorized {
 		t.Fatalf("expected bearer precedence (wrong bearer) to fail, got %d", code)
 	}
+	t.Log("bearer precedence over json (wrong bearer): correctly rejected")
 
 	code, _ = doAliveRaw(t, listenAddr, map[string]string{"Content-Type": "application/json"}, strings.NewReader(`{"password":""}`))
 	if code != http.StatusUnauthorized {
 		t.Fatalf("expected empty json password to fail, got %d", code)
 	}
+	t.Log("empty json password: correctly rejected")
 
 	code, _ = doAliveRaw(t, listenAddr, map[string]string{"Content-Type": "application/json"}, strings.NewReader(`{"other":"x"}`))
 	if code != http.StatusUnauthorized {
 		t.Fatalf("expected missing json password to fail, got %d", code)
 	}
+	t.Log("missing json password field: correctly rejected")
+	t.Log("PASS: all authentication edge cases validated")
 }
 
 func TestRobustnessStateFileCorruptionRecovery(t *testing.T) {
 	listenAddr := nextListenAddr(t)
 	env := SetupTestEnv(t)
 
+	t.Log("Writing corrupted state file...")
 	if err := os.WriteFile(filepath.Join(env.StateDir, "heartbeat_state.json"), []byte("{invalid json"), 0o600); err != nil {
 		t.Fatalf("failed to write corrupted state: %v", err)
 	}
@@ -515,6 +526,7 @@ func TestRobustnessStateFileCorruptionRecovery(t *testing.T) {
 	if !strings.Contains(strings.ToLower(err.Error()), "ready") && !strings.Contains(strings.ToLower(err.Error()), "exited") {
 		t.Fatalf("unexpected startup failure for corrupted state: %v", err)
 	}
+	t.Logf("PASS: startup correctly failed with corrupted state: %v", err)
 }
 
 func TestRobustnessHealthCheckResponsivenessUnderLoad(t *testing.T) {
@@ -593,6 +605,7 @@ func TestRobustnessHealthCheckResponsivenessUnderLoad(t *testing.T) {
 		t.Fatalf("health latency too high: %dms", atomic.LoadInt64(&maxHealthLatency))
 	}
 	requireAppStillHealthy(t, listenAddr)
+	t.Logf("PASS: /health always responsive under load (max latency: %dms)", atomic.LoadInt64(&maxHealthLatency))
 	_ = ctx
 }
 
@@ -615,24 +628,29 @@ func TestRobustnessPermissionRevocationMidOperation(t *testing.T) {
 	if _, err := client.ProofOfLife(ctx); err != nil {
 		t.Fatalf("first proof failed: %v", err)
 	}
+	t.Log("First proof accepted")
 
 	if err := os.Chmod(env.StateDir, 0o500); err != nil {
 		t.Fatalf("failed to revoke write permissions: %v", err)
 	}
 	defer os.Chmod(env.StateDir, 0o755)
+	t.Log("State directory set read-only")
 
 	if _, err := client.ProofOfLife(ctx); err == nil {
 		t.Fatal("expected proof to fail when state directory is read-only")
 	}
+	t.Log("Proof correctly rejected with read-only state dir")
 
 	if err := os.Chmod(env.StateDir, 0o755); err != nil {
 		t.Fatalf("failed to restore permissions: %v", err)
 	}
+	t.Log("State directory permissions restored")
 
 	if _, err := client.ProofOfLife(ctx); err != nil {
 		t.Fatalf("proof should recover after permission restore: %v", err)
 	}
 	requireAppStillHealthy(t, listenAddr)
+	t.Log("PASS: proof recovers correctly after permission restoration")
 }
 
 func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
@@ -671,11 +689,14 @@ func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
 	// Best-effort special file: a FIFO if supported.
 	_ = syscall.Mkfifo(filepath.Join(env.DataDir, "event.pipe"), 0o600)
 
+	t.Logf("Data dir prepared with symlinks, nested dir, and special file (interval=%v, maxWait=%v)", fastDeletionInterval, fastDeletionWait)
+
 	client := NewAppClient(t, listenAddr, password)
 	if _, err := client.ProofOfLife(ctx); err != nil {
 		t.Fatalf("failed to send proof: %v", err)
 	}
 
+	t.Log("Waiting for deletion...")
 	if err := WaitForDirEmpty(ctx, env.DataDir, fastDeletionWait); err != nil {
 		t.Fatalf("data dir not cleared for symlink/special files: %v\nstdout: %s", err, app.Stdout())
 	}
@@ -684,6 +705,7 @@ func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
 		t.Fatalf("outside target should not be deleted through symlink: %v", err)
 	}
 	requireAppStillHealthy(t, listenAddr)
+	t.Log("PASS: symlinks and special files cleared without following symlink targets")
 }
 
 func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
@@ -712,14 +734,18 @@ func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
 	}
 	CreateTestFile(t, env.DataDir, "root.txt")
 
+	t.Logf("Data dir prepared with %d nested directories (interval=%v, maxWait=%v)", len(nested), fastDeletionInterval, fastDeletionWait)
+
 	client := NewAppClient(t, listenAddr, password)
 	if _, err := client.ProofOfLife(ctx); err != nil {
 		t.Fatalf("failed to send proof: %v", err)
 	}
 
+	t.Log("Waiting for deletion of nested directory tree...")
 	if err := WaitForDirEmpty(ctx, env.DataDir, fastDeletionWait); err != nil {
 		t.Fatalf("nested directory content not deleted: %v\nstdout: %s", err, app.Stdout())
 	}
 	AssertDirIsEmpty(t, env.DataDir)
 	requireAppStillHealthy(t, listenAddr)
+	t.Log("PASS: nested directory tree fully deleted")
 }

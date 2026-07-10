@@ -65,4 +65,4 @@ jobs:
           cache: true
 
       - name: Run e2e tests
-        run: go test ./internal/testkit/e2e -timeout=15m
+        run: go test -v ./internal/testkit/e2e -timeout=15m
