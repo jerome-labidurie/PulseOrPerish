@@ -95,8 +95,16 @@ func (c Config) Validate() error {
 	if !filepath.IsAbs(c.StateDir) {
 		return errors.New("state-dir must be an absolute path")
 	}
-	if c.LogLevel != "debug" && c.LogLevel != "info" && c.LogLevel != "warn" && c.LogLevel != "error" {
-		return fmt.Errorf("invalid log-level: %s", c.LogLevel)
+	validLevels := []string{"debug", "info", "warn", "error"}
+	validLevel := false
+	for _, l := range validLevels {
+		if c.LogLevel == l {
+			validLevel = true
+			break
+		}
+	}
+	if !validLevel {
+		return fmt.Errorf("invalid log-level %q, must be one of %v", c.LogLevel, validLevels)
 	}
 	return nil
 }
