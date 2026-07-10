@@ -44,13 +44,13 @@ func validateDataDirPermissions(log zerolog.Logger, dataDir string) error {
 func main() {
 	cfg, err := config.Load(os.Args[1:])
 	if err != nil {
-		_, _ = os.Stderr.WriteString("config error: " + err.Error() + "\n")
+		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		os.Exit(2)
 	}
 
 	logger, closer, err := logx.New(cfg.LogLevel, cfg.LogPath)
 	if err != nil {
-		_, _ = os.Stderr.WriteString("logger error: " + err.Error() + "\n")
+		fmt.Fprintf(os.Stderr, "logger error: %v\n", err)
 		os.Exit(2)
 	}
 	if closer != nil {
