@@ -35,7 +35,7 @@ func (s *Server) Router() http.Handler {
 
 	r.Group(func(pr chi.Router) {
 		pr.Use(s.authMiddleware)
-		r.Post("/alive", s.handleAlive)
+		pr.Post("/alive", s.handleAlive)
 	})
 
 	return r
@@ -43,12 +43,7 @@ func (s *Server) Router() http.Handler {
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		auth := strings.TrimSpace(r.Header.Get("Authorization"))
-		if !strings.HasPrefix(auth, "Bearer ") {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
-			return
-		}
-		token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+		token := s.extractPassword(r)
 		if subtle.ConstantTimeCompare([]byte(token), []byte(s.password)) != 1 {
 			s.log.Warn().Str("remote", r.RemoteAddr).Msg("authentication failed")
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid password"})
@@ -60,11 +55,6 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) handleAlive(w http.ResponseWriter, r *http.Request) {
 	s.log.Debug().Str("remote", r.RemoteAddr).Msg("proof of life request")
-	if !s.authenticateRequest(r) {
-		s.log.Warn().Str("remote", r.RemoteAddr).Msg("authentication failed")
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid password"})
-		return
-	}
 
 	at, err := s.monitor.RegisterProof("http")
 	if err != nil {
