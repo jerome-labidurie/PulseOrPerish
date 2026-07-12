@@ -1,8 +1,9 @@
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-trixie AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download; \
-    apk add --no-cache git
+    apt-get update; \
+    apt-get install -y git wipe
 COPY . .
 
 ARG VERSION=dev
@@ -12,8 +13,13 @@ RUN BUILD_DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ') && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o /out/pulseorperish ./cmd/pulseorperish
 
 FROM gcr.io/distroless/static-debian13
+
 WORKDIR /
 COPY --from=builder /out/pulseorperish /pulseorperish
+COPY --from=builder /usr/bin/wipe /usr/bin/wipe
+COPY --from=builder /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so.6
+COPY --from=builder /lib64/ld-linux-x86-64.so.2 /lib64/ld-linux-x86-64.so.2
+
 EXPOSE 8080
 
 ARG VERSION=dev
