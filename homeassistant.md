@@ -32,22 +32,19 @@ Relevant fields for Home Assistant:
 
 ## REST Sensor Configuration
 
-Add a REST sensor that polls the public `/status` endpoint and uses `timeRemainingMinutes` as the entity state.
+Add a REST sensor that polls the public `/status` endpoint and uses `nextDeletion` as the entity state.
 
 ```yaml
 sensor:
   - platform: rest
-    name: PulseOrPerish Remaining Time
-    unique_id: pulseorperish_remaining_time
-    device_class: duration
+    name: PulseOrPerish Deletion Time
+    unique_id: pulseorperish_deletion_time
+    device_class: timestamp
     resource: http://YOUR_HOST:8080/status
     method: GET
     scan_interval: 300 # in seconds
-    unit_of_measurement: "min"
-    value_template: "{{ value_json.timeRemainingMinutes }}"
+    value_template: "{{ value_json.nextDeletion }}"
     json_attributes:
-      - timeRemaining
-      - nextDeletion
       - lastProofAt
       - overdue
       - dryRun
