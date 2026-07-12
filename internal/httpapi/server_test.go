@@ -95,13 +95,6 @@ func assertAliveSuccess(t *testing.T, w *httptest.ResponseRecorder) {
 	if b, ok := v.(bool); !ok || b {
 		t.Fatalf("expected dryRun=false in test server, got %#v", v)
 	}
-	v, ok = payload["timeRemainingMinutes"]
-	if !ok {
-		t.Fatal("expected timeRemainingMinutes field in /alive response")
-	}
-	if minutes, ok := v.(float64); !ok || minutes <= 0 {
-		t.Fatalf("expected positive timeRemainingMinutes in /alive response, got %#v", v)
-	}
 }
 
 func TestAliveWithPasswordField(t *testing.T) {

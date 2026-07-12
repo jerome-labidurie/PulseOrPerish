@@ -94,11 +94,10 @@ func (s *Server) handleAlive(w http.ResponseWriter, r *http.Request) {
 	}
 	status := s.monitor.Snapshot(time.Now().UTC())
 	writeJSON(w, http.StatusOK, map[string]any{
-		"lastProofAt":          at,
-		"nextDeletion":         status.NextDeletion,
-		"timeRemaining":        status.TimeRemaining,
-		"timeRemainingMinutes": status.TimeRemainingMinutes,
-		"dryRun":               status.DryRun,
+		"lastProofAt":   at,
+		"nextDeletion":  status.NextDeletion,
+		"timeRemaining": status.TimeRemaining,
+		"dryRun":        status.DryRun,
 	})
 }
 

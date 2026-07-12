@@ -17,7 +17,6 @@ The `GET /status` endpoint returns a JSON object similar to this:
   "lastProofAt": "2026-07-09T18:00:00Z",
   "nextDeletion": "2026-07-10T18:00:00Z",
   "timeRemaining": "23h58m12s",
-  "timeRemainingMinutes": 1439,
   "overdue": false,
   "dryRun": false
 }
@@ -25,9 +24,9 @@ The `GET /status` endpoint returns a JSON object similar to this:
 
 Relevant fields for Home Assistant:
 
-- `timeRemainingMinutes` is the numeric value intended for the Home Assistant sensor state.
+- `nextDeletion` is the sensor state
 - `timeRemaining` is the original Go duration.
-- `nextDeletion` and `lastProofAt` are useful as sensor attributes.
+- `lastProofAt` is useful as sensor attribute.
 - `overdue` and `dryRun` can also be exposed as attributes.
 
 ## REST Sensor Configuration
