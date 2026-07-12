@@ -56,6 +56,8 @@ sensor:
 
 The example below uses one automation with three [Template triggers](https://www.home-assistant.io/docs/automation/trigger/#template-trigger) and shared actions.
 
+![phone_notif](./img/homeassistant_notif.jpg)
+
 Each alert sends:
 - a notification to your mobile app
 - a persistent notification in the Home Assistant interface
@@ -86,8 +88,7 @@ automation:
     actions:
       - variables:
           days_left: >-
-            {% set map = {'t_minus_10d': 10, 't_minus_5d': 5, 't_minus_1d': 1} %}
-            {{ map.get(trigger.id, '?') }}
+            {{ ((as_timestamp(states('sensor.pulseorperish_deletion_time')) - now().timestamp()) / (24*60*60)) | round(0, 'ceil') }}
           severity_label: >-
             {% set map = {'t_minus_10d': 'warning', 't_minus_5d': 'warning', 't_minus_1d': 'critical'} %}
             {{ map.get(trigger.id, 'warning') }}
