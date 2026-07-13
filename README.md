@@ -98,6 +98,11 @@ All tests:
 go test ./...
 ```
 
+Unit tests only
+```bash
+go test $(go list ./... | grep -v 'internal/testkit/e2e')
+```
+
 End-to-end tests:
 ```bash
 go test ./internal/testkit/e2e -v -timeout 30m
