@@ -15,7 +15,7 @@ import (
 func TestRegisterProofUpdatesStatus(t *testing.T) {
 	d := t.TempDir()
 	st := state.NewStore(filepath.Join(d, "state"))
-	del := delete.NewSafeDeleter(zerolog.Nop(), false)
+	del := delete.NewSafeDeleter(zerolog.Nop(), false, "rm", "", "info")
 	svc := NewService(zerolog.Nop(), st, del, time.Minute, false, filepath.Join(d, "data"))
 	if err := svc.LoadInitialState(); err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestRegisterProofUpdatesStatus(t *testing.T) {
 func TestRunDoesNotPanicOnCancelledContext(t *testing.T) {
 	d := t.TempDir()
 	st := state.NewStore(filepath.Join(d, "state"))
-	del := delete.NewSafeDeleter(zerolog.Nop(), false)
+	del := delete.NewSafeDeleter(zerolog.Nop(), false, "rm", "", "info")
 	svc := NewService(zerolog.Nop(), st, del, time.Second, false, filepath.Join(d, "data"))
 	if err := svc.LoadInitialState(); err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestRunDoesNotPanicOnCancelledContext(t *testing.T) {
 func TestSnapshotNextDeletionStableWithoutProof(t *testing.T) {
 	d := t.TempDir()
 	st := state.NewStore(filepath.Join(d, "state"))
-	del := delete.NewSafeDeleter(zerolog.Nop(), false)
+	del := delete.NewSafeDeleter(zerolog.Nop(), false, "rm", "", "info")
 	svc := NewService(zerolog.Nop(), st, del, time.Minute, false, filepath.Join(d, "data"))
 	if err := svc.LoadInitialState(); err != nil {
 		t.Fatal(err)

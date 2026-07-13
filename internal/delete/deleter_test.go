@@ -24,7 +24,7 @@ func TestClearDirectory_RefusesDangerousPaths(t *testing.T) {
 		{name: "root", dir: "/"},
 	}
 
-	del := NewSafeDeleter(zerolog.Nop(), false)
+	del := NewSafeDeleter(zerolog.Nop(), false, "rm", "", "info")
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -43,7 +43,7 @@ func TestClearDirectory_NonExistentDirectoryReturnsNil(t *testing.T) {
 	d := t.TempDir()
 	missing := filepath.Join(d, "does-not-exist")
 
-	del := NewSafeDeleter(zerolog.Nop(), false)
+	del := NewSafeDeleter(zerolog.Nop(), false, "rm", "", "info")
 	if err := del.ClearDirectory(context.Background(), missing); err != nil {
 		t.Fatalf("expected nil for non-existent directory, got: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestClearDirectory_DeletesRecursivelyAndKeepsRoot(t *testing.T) {
 	fshelpers.CreateTestFile(t, filepath.Join(d, "a", "b"), "b.txt")
 	fshelpers.CreateTestFile(t, nested, "c.txt")
 
-	del := NewSafeDeleter(zerolog.Nop(), false)
+	del := NewSafeDeleter(zerolog.Nop(), false, "rm", "", "info")
 	if err := del.ClearDirectory(context.Background(), d); err != nil {
 		t.Fatalf("clear failed: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestClearDirectory_DryRunKeepsContent(t *testing.T) {
 	d := t.TempDir()
 	fshelpers.CreateTestFile(t, d, "file.txt")
 
-	del := NewSafeDeleter(zerolog.Nop(), true)
+	del := NewSafeDeleter(zerolog.Nop(), true, "rm", "", "info")
 	if err := del.ClearDirectory(context.Background(), d); err != nil {
 		t.Fatalf("clear failed: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestClearDirectory_ContinuesWhenRemoveAllFails(t *testing.T) {
 
 	var buf bytes.Buffer
 	logger := zerolog.New(&buf)
-	del := NewSafeDeleter(logger, false)
+	del := NewSafeDeleter(logger, false, "rm", "", "info")
 
 	if err := del.ClearDirectory(context.Background(), d); err != nil {
 		t.Fatalf("expected nil despite deletion errors, got: %v", err)
@@ -134,5 +134,75 @@ func TestClearDirectory_ContinuesWhenRemoveAllFails(t *testing.T) {
 	}
 	if !strings.Contains(logs, blockedDir) {
 		t.Fatalf("expected logs to contain the blocked directory path, logs: %s", logs)
+	}
+}
+
+func TestBuildWipeArgs_AppendsSafetyFlagsAndTarget(t *testing.T) {
+	args := buildWipeArgs("-q -Q 1", "info", "/data")
+	joined := strings.Join(args, " ")
+
+	if !strings.Contains(joined, "-q") || !strings.Contains(joined, "-Q 1") {
+		t.Fatalf("expected configured args to be preserved, got: %v", args)
+	}
+	for _, required := range []string{"-c", "-r", "-f", "-s"} {
+		if !containsArg(args, required) {
+			t.Fatalf("expected %s in wipe args: %v", required, args)
+		}
+	}
+	if args[len(args)-1] != "/data" {
+		t.Fatalf("expected target dir as last argument, got: %v", args)
+	}
+}
+
+func TestBuildWipeArgs_DoesNotForceSilentInDebug(t *testing.T) {
+	args := buildWipeArgs("-q -Q 1", "debug", "/data")
+	if containsArg(args, "-s") {
+		t.Fatalf("did not expect -s when log level is debug, got: %v", args)
+	}
+}
+
+func TestClearDirectory_WipeRunsCommand(t *testing.T) {
+	d := t.TempDir()
+
+	var called bool
+	var gotBin string
+	var gotArgs []string
+	del := NewSafeDeleter(zerolog.Nop(), false, "wipe", "-q -Q 1", "info")
+	del.runner = func(_ context.Context, bin string, args ...string) ([]byte, error) {
+		called = true
+		gotBin = bin
+		gotArgs = append([]string{}, args...)
+		return []byte("ok"), nil
+	}
+
+	if err := del.ClearDirectory(context.Background(), d); err != nil {
+		t.Fatalf("expected wipe deletion to succeed, got: %v", err)
+	}
+	if !called {
+		t.Fatal("expected wipe command runner to be called")
+	}
+	if gotBin != "wipe" {
+		t.Fatalf("expected binary wipe, got %q", gotBin)
+	}
+	if gotArgs[len(gotArgs)-1] != d {
+		t.Fatalf("expected wipe target %q, got args: %v", d, gotArgs)
+	}
+}
+
+func TestClearDirectory_WipeDryRunSkipsCommand(t *testing.T) {
+	d := t.TempDir()
+
+	called := false
+	del := NewSafeDeleter(zerolog.Nop(), true, "wipe", "-q -Q 1", "info")
+	del.runner = func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+		called = true
+		return nil, nil
+	}
+
+	if err := del.ClearDirectory(context.Background(), d); err != nil {
+		t.Fatalf("expected dry-run wipe to succeed, got: %v", err)
+	}
+	if called {
+		t.Fatal("expected wipe command runner not to be called in dry-run")
 	}
 }

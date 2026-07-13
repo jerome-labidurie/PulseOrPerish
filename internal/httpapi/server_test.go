@@ -20,7 +20,7 @@ import (
 func newTestServer(t *testing.T) http.Handler {
 	t.Helper()
 	st := state.NewStore(filepath.Join(t.TempDir(), "state"))
-	del := delete.NewSafeDeleter(zerolog.Nop(), false)
+	del := delete.NewSafeDeleter(zerolog.Nop(), false, "rm", "", "info")
 	m := monitor.NewService(zerolog.Nop(), st, del, time.Minute, false, filepath.Join(t.TempDir(), "data"))
 	if err := m.LoadInitialState(); err != nil {
 		t.Fatal(err)
