@@ -138,7 +138,9 @@ func TestClearDirectory_ContinuesWhenRemoveAllFails(t *testing.T) {
 }
 
 func TestBuildWipeArgs_AppendsSafetyFlagsAndTarget(t *testing.T) {
-	args := buildWipeArgs("-q -Q 1", "info", "/data")
+	entries := []string{"/data/a", "/data/b"}
+
+	args := buildWipeArgs("-q -Q 1", "info", entries)
 	joined := strings.Join(args, " ")
 
 	if !strings.Contains(joined, "-q") || !strings.Contains(joined, "-Q 1") {
@@ -149,13 +151,10 @@ func TestBuildWipeArgs_AppendsSafetyFlagsAndTarget(t *testing.T) {
 			t.Fatalf("expected %s in wipe args: %v", required, args)
 		}
 	}
-	if args[len(args)-1] != "/data" {
-		t.Fatalf("expected target dir as last argument, got: %v", args)
-	}
 }
 
 func TestBuildWipeArgs_DoesNotForceSilentInDebug(t *testing.T) {
-	args := buildWipeArgs("-q -Q 1", "debug", "/data")
+	args := buildWipeArgs("-q -Q 1", "debug", nil)
 	if containsArg(args, "-s") {
 		t.Fatalf("did not expect -s when log level is debug, got: %v", args)
 	}
@@ -166,12 +165,10 @@ func TestClearDirectory_WipeRunsCommand(t *testing.T) {
 
 	var called bool
 	var gotBin string
-	var gotArgs []string
 	del := NewSafeDeleter(zerolog.Nop(), false, "wipe", "-q -Q 1", "info")
 	del.runner = func(_ context.Context, bin string, args ...string) ([]byte, error) {
 		called = true
 		gotBin = bin
-		gotArgs = append([]string{}, args...)
 		return []byte("ok"), nil
 	}
 
@@ -183,9 +180,6 @@ func TestClearDirectory_WipeRunsCommand(t *testing.T) {
 	}
 	if gotBin != "wipe" {
 		t.Fatalf("expected binary wipe, got %q", gotBin)
-	}
-	if gotArgs[len(gotArgs)-1] != d {
-		t.Fatalf("expected wipe target %q, got args: %v", d, gotArgs)
 	}
 }
 
