@@ -72,18 +72,26 @@ func TestClearDirectory_DeletesRecursivelyAndKeepsRoot(t *testing.T) {
 	fshelpers.AssertDirIsEmpty(t, d)
 }
 
-func TestClearDirectory_DryRunKeepsContent(t *testing.T) {
+func testClearDirectory_DryRunKeepsContent(t *testing.T, deleteMode string) {
 	d := t.TempDir()
 	fshelpers.CreateTestFile(t, d, "file.txt")
 
-	del := NewSafeDeleter(zerolog.Nop(), true, "rm", "", "info")
+	del := NewSafeDeleter(zerolog.Nop(), true, deleteMode, "", "info")
 	if err := del.ClearDirectory(context.Background(), d); err != nil {
-		t.Fatalf("clear failed: %v", err)
+		t.Fatalf("%s clear failed: %v", deleteMode, err)
 	}
 
 	if got := fshelpers.CountFilesInDir(t, d); got != 1 {
-		t.Fatalf("expected directory content unchanged in dry-run, got %d entries", got)
+		t.Fatalf("expected directory content unchanged in %s dry-run, got %d entries", deleteMode, got)
 	}
+}
+
+func TestRmClearDirectory_DryRunKeepsContent(t *testing.T) {
+	testClearDirectory_DryRunKeepsContent(t, "rm")
+}
+
+func TestWipeClearDirectory_DryRunKeepsContent(t *testing.T) {
+	testClearDirectory_DryRunKeepsContent(t, "wipe")
 }
 
 func TestClearDirectory_ContinuesWhenRemoveAllFails(t *testing.T) {
@@ -138,9 +146,8 @@ func TestClearDirectory_ContinuesWhenRemoveAllFails(t *testing.T) {
 }
 
 func TestBuildWipeArgs_AppendsSafetyFlagsAndTarget(t *testing.T) {
-	entries := []string{"/data/a", "/data/b"}
 
-	args := buildWipeArgs("-q -Q 1", "info", entries)
+	args := buildWipeArgs("-q -Q 1", "info", "/data/a")
 	joined := strings.Join(args, " ")
 
 	if !strings.Contains(joined, "-q") || !strings.Contains(joined, "-Q 1") {
@@ -154,7 +161,7 @@ func TestBuildWipeArgs_AppendsSafetyFlagsAndTarget(t *testing.T) {
 }
 
 func TestBuildWipeArgs_DoesNotForceSilentInDebug(t *testing.T) {
-	args := buildWipeArgs("-q -Q 1", "debug", nil)
+	args := buildWipeArgs("-q -Q 1", "debug", "/data/b")
 	if containsArg(args, "-s") {
 		t.Fatalf("did not expect -s when log level is debug, got: %v", args)
 	}
@@ -162,6 +169,7 @@ func TestBuildWipeArgs_DoesNotForceSilentInDebug(t *testing.T) {
 
 func TestClearDirectory_WipeRunsCommand(t *testing.T) {
 	d := t.TempDir()
+	fshelpers.CreateTestFile(t, d, "a")
 
 	var called bool
 	var gotBin string
