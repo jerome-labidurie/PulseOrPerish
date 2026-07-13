@@ -111,7 +111,10 @@ func main() {
 		_ = httpServer.Shutdown(sctx)
 	}()
 
-	logger.Info().Str("version", Version).Str("buildDate", BuildDate).Str("commit", CommitHash).Str("listen", cfg.ListenAddr).Dur("interval", cfg.Interval).Dur("tick", mon.Tick()).Bool("dryRun", cfg.DryRun).Str("dataDir", cfg.DataDir).Str("stateDir", cfg.StateDir).Msg("PulseOrPerish started")
+	logger.Info().Str("version", Version).Str("buildDate", BuildDate).Str("commit", CommitHash).Dur("tick", mon.Tick()).Interface("config", cfg).Msg("PulseOrPerish started")
+	status := mon.Snapshot(time.Now().UTC())
+	logger.Info().Time("nextDeletion", status.NextDeletion).Msg("Monitor started")
+
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatal().Err(err).Msg("http server failed")
 	}

@@ -52,29 +52,35 @@ func NewSafeDeleter(log zerolog.Logger, dryRun bool, deleteMode, wipeArgs, logLe
 // or if the directory listing fails. Individual entry removal errors are logged
 // but do not abort the iteration. Returns ctx.Err() if the context is cancelled.
 func (d *SafeDeleter) ClearDirectory(ctx context.Context, dir string) error {
+	files := []string{}
+
 	clean := filepath.Clean(dir)
 	if clean == "." || clean == "" || clean == "/" {
 		return errors.New("refusing to clear dangerous path")
 	}
-	if d.deleteMode == "wipe" {
-		return d.clearWithWipe(ctx, clean)
-	}
 
 	entries, err := os.ReadDir(clean)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
+		return nil
+	}
+	for _, e := range entries {
+		files = append(files, filepath.Join(clean, e.Name()))
 	}
 
-	for _, e := range entries {
+	if d.deleteMode == "wipe" {
+		return d.clearWithWipe(ctx, files)
+	}
+
+	return d.clearWithRm(ctx, files)
+}
+
+func (d *SafeDeleter) clearWithRm(ctx context.Context, files []string) error {
+	for _, target := range files {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
-		target := filepath.Join(clean, e.Name())
 		if d.dryRun {
 			d.log.Warn().Str("path", target).Msg("dry-run enabled: would delete entry")
 			continue
@@ -88,37 +94,31 @@ func (d *SafeDeleter) ClearDirectory(ctx context.Context, dir string) error {
 	return nil
 }
 
-func (d *SafeDeleter) clearWithWipe(ctx context.Context, cleanDir string) error {
-	if _, err := os.Stat(cleanDir); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
-	}
-
+func (d *SafeDeleter) clearWithWipe(ctx context.Context, files []string) error {
 	if d.dryRun {
-		d.log.Warn().Str("path", cleanDir).Msg("dry-run enabled: would wipe directory")
+		d.log.Warn().Str("paths", strings.Join(files, " ")).Msg("dry-run enabled: would delete entry")
 		return nil
 	}
 
-	args := buildWipeArgs(d.wipeArgs, d.logLevel, cleanDir)
+	args := buildWipeArgs(d.wipeArgs, d.logLevel, files)
+	d.log.Info().Str("args", strings.Join(args, " ")).Msg("Launching wipe")
 	out, err := d.runner(ctx, "wipe", args...)
 	if err != nil {
-		d.log.Error().Err(err).Str("path", cleanDir).Str("output", string(out)).Msg("wipe command failed")
-		return fmt.Errorf("wipe failed for %s: %w", cleanDir, err)
+		d.log.Error().Err(err).Str("output", string(out)).Msg("wipe command failed")
+		return fmt.Errorf("wipe failed: %w", err)
 	}
-
-	d.log.Debug().Str("path", cleanDir).Msg("wiped directory")
+	d.log.Debug().Str("output", string(out)).Msg("wipe command runned")
+	d.log.Debug().Msg("wiped directory")
 	return nil
 }
 
-func buildWipeArgs(configuredArgs, logLevel, targetDir string) []string {
+func buildWipeArgs(configuredArgs string, logLevel string, files []string) []string {
 	args := strings.Fields(strings.TrimSpace(configuredArgs))
 	args = append(args, "-c", "-r", "-f")
 	if strings.ToLower(strings.TrimSpace(logLevel)) != "debug" && !containsArg(args, "-s") {
 		args = append(args, "-s")
 	}
-	args = append(args, targetDir)
+	args = append(args, files...)
 	return args
 }
 
