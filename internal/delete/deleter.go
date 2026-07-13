@@ -5,7 +5,6 @@ package delete
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,30 +94,30 @@ func (d *SafeDeleter) clearWithRm(ctx context.Context, files []string) error {
 }
 
 func (d *SafeDeleter) clearWithWipe(ctx context.Context, files []string) error {
-	if d.dryRun {
-		d.log.Warn().Str("paths", strings.Join(files, " ")).Msg("dry-run enabled: would delete entry")
-		return nil
-	}
 
-	args := buildWipeArgs(d.wipeArgs, d.logLevel, files)
-	d.log.Info().Str("args", strings.Join(args, " ")).Msg("Launching wipe")
-	out, err := d.runner(ctx, "wipe", args...)
-	if err != nil {
-		d.log.Error().Err(err).Str("output", string(out)).Msg("wipe command failed")
-		return fmt.Errorf("wipe failed: %w", err)
+	for _, target := range files {
+		if d.dryRun {
+			d.log.Warn().Str("path", target).Msg("dry-run enabled: would delete entry")
+			continue
+		}
+		args := buildWipeArgs(d.wipeArgs, d.logLevel, target)
+		d.log.Info().Str("args", strings.Join(args, " ")).Msg("Starting wipe")
+		out, err := d.runner(ctx, "wipe", args...)
+		if err != nil {
+			d.log.Error().Err(err).Str("output", string(out)).Msg("wipe command failed")
+		}
+		d.log.Debug().Str("path", target).Str("output", string(out)).Msg("wipe command runned")
 	}
-	d.log.Debug().Str("output", string(out)).Msg("wipe command runned")
-	d.log.Debug().Msg("wiped directory")
 	return nil
 }
 
-func buildWipeArgs(configuredArgs string, logLevel string, files []string) []string {
+func buildWipeArgs(configuredArgs string, logLevel string, file string) []string {
 	args := strings.Fields(strings.TrimSpace(configuredArgs))
 	args = append(args, "-c", "-r", "-f")
 	if strings.ToLower(strings.TrimSpace(logLevel)) != "debug" && !containsArg(args, "-s") {
 		args = append(args, "-s")
 	}
-	args = append(args, files...)
+	args = append(args, file)
 	return args
 }
 
