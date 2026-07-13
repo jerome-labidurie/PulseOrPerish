@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -75,7 +76,12 @@ func main() {
 	}
 
 	st := state.NewStore(cfg.StateDir)
-	del := delete.NewSafeDeleter(logger, cfg.DryRun)
+	if cfg.DeleteMode == "wipe" {
+		if _, err := exec.LookPath("wipe"); err != nil {
+			logger.Fatal().Err(err).Msg("delete-method=wipe requires wipe binary to be installed")
+		}
+	}
+	del := delete.NewSafeDeleter(logger, cfg.DryRun, cfg.DeleteMode, cfg.WipeArgs, cfg.LogLevel)
 	mon := monitor.NewService(logger, st, del, cfg.Interval, cfg.DryRun, cfg.DataDir)
 
 	// Validate write/delete permissions on dataDir

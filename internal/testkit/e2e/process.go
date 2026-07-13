@@ -57,13 +57,19 @@ type AppProcess struct {
 // It returns an error if the build or startup fails.
 func StartApp(t *testing.T, listenAddr, dataDir, stateDir, password string, interval time.Duration) (*AppProcess, error) {
 	t.Helper()
-	return startAppWithOptions(t, listenAddr, dataDir, stateDir, password, interval, false)
+	return startAppWithOptions(t, listenAddr, dataDir, stateDir, password, interval, false, "", "")
 }
 
 // StartAppWithDryRun starts the application with the dry-run flag enabled.
 func StartAppWithDryRun(t *testing.T, listenAddr, dataDir, stateDir, password string, interval time.Duration) (*AppProcess, error) {
 	t.Helper()
-	return startAppWithOptions(t, listenAddr, dataDir, stateDir, password, interval, true)
+	return startAppWithOptions(t, listenAddr, dataDir, stateDir, password, interval, true, "", "")
+}
+
+// StartAppWithDeleteMethod starts the application with an explicit delete method and optional wipe args.
+func StartAppWithDeleteMethod(t *testing.T, listenAddr, dataDir, stateDir, password string, interval time.Duration, deleteMethod, wipeArgs string) (*AppProcess, error) {
+	t.Helper()
+	return startAppWithOptions(t, listenAddr, dataDir, stateDir, password, interval, false, deleteMethod, wipeArgs)
 }
 
 // ensureBuiltBinary builds the app binary once and returns its cached path.
@@ -109,7 +115,7 @@ func ensureBuiltBinary() (string, error) {
 }
 
 // startAppWithOptions starts the app process with optional dry-run mode.
-func startAppWithOptions(t *testing.T, listenAddr, dataDir, stateDir, password string, interval time.Duration, dryRun bool) (*AppProcess, error) {
+func startAppWithOptions(t *testing.T, listenAddr, dataDir, stateDir, password string, interval time.Duration, dryRun bool, deleteMethod, wipeArgs string) (*AppProcess, error) {
 	t.Helper()
 
 	binaryPath, err := ensureBuiltBinary()
@@ -131,6 +137,12 @@ func startAppWithOptions(t *testing.T, listenAddr, dataDir, stateDir, password s
 	)
 	if dryRun {
 		cmd.Args = append(cmd.Args, "-dry-run")
+	}
+	if deleteMethod != "" {
+		cmd.Args = append(cmd.Args, "-delete-method", deleteMethod)
+	}
+	if wipeArgs != "" {
+		cmd.Args = append(cmd.Args, "-wipe-args", wipeArgs)
 	}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr

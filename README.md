@@ -10,13 +10,12 @@ Dead man switch in Go.
 Protect what matters with a simple heartbeat: as long as you are alive, your data stays safe; if you stop checking in, **PulseOrPerish** automatically wipes the target directory. Lightweight, self-hosted, and ready in minutes with a web UI, API, and container support.
 
 ## Features
-- HTTP User Interface to submit proof-of-life with a password
+- HTTP User Interface to submit proof-of-life with a password (with Dark mode)
 - REST API with same capabilities
 - Persistent heartbeat state surviving container restarts
-- Automatic data directory content wipe when deadline is exceeded
+- Automatic data directory content wipe when deadline is exceeded (simple or safe deletion)
 - Configurable via CLI flags and environment variables
 - Distroless-compatible container image
-- Dark mode
 
 <p>
   <a href="./img/webui_light.png">
@@ -35,11 +34,21 @@ Priority: flags > environment variables > defaults.
 | Authentication password | `POP_PASSWORD` | `--password` | *(required)* | `mysecret` |
 | Interval between proofs | `POP_INTERVAL` | `--interval` | `720h` | `24h`, `720h` ([format](https://pkg.go.dev/time#ParseDuration)) |
 | Dry-run mode (no deletion) | `POP_DRY_RUN` | `--dry-run` | `false` | `true`, `false` |
+| Deletion method | `POP_DELETE_METHOD` | `--delete-method` | `rm` | `rm`, `wipe` |
+| Arguments for wipe | `POP_WIPE_ARGS` | `--wipe-args` | `-q -Q 1` | `-q -Q 3 -e` |
 | Directory to wipe on deadline | `POP_DATA_DIR` | `--data-dir` | *(required)* | `/data` (absolute path) |
 | Directory for state persistence | `POP_STATE_DIR` | `--state-dir` | `/state` | `/var/lib/pop/state` |
 | Log directory | `POP_LOG_PATH` | `--log-path` | (stdout only) | `/var/log/pop/` (directory; if set, a timestamped file is also created) |
 | Log level | `POP_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
 | HTTP listen address | `POP_LISTEN` | `--listen` | `:8080` | `:8086`, `0.0.0.0:8080` |
+
+### Deletion methods
+
+**`rm`** (default): uses Go's `os.RemoveAll`; no external dependency.
+
+**`wipe`**: invokes the [`wipe`](https://wipe.sourceforge.net/) utility to securely overwrite data before deletion. Defaults options (See `POP_WIPE_ARGS`) are not very secure. Execution can be **very** long.
+
+**Startup validation**: if `delete-method=wipe`, the `wipe` binary must be present on `PATH` at startup; otherwise the application refuses to start.
 
 ## Home Assistant
 See [homeassistant.md](./homeassistant.md) for a REST sensor example that imports the remaining time into Home Assistant.
@@ -95,15 +104,15 @@ go run ./cmd/pulseorperish \
 ## Tests
 All tests:
 ```bash
-go test ./...
+go test -v -p 1 ./...
 ```
 
-Unit tests only
+Unit tests only:
 ```bash
 go test $(go list ./... | grep -v 'internal/testkit/e2e')
 ```
 
-End-to-end tests:
+End-to-end tests only:
 ```bash
 go test ./internal/testkit/e2e -v -timeout 30m
 ```
