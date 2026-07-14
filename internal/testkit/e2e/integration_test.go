@@ -137,13 +137,13 @@ func TestProofOfLifeRepousseDeadline(t *testing.T) {
 
 // TestDeadlineTriggersFileDelection verifies that when the deadline arrives
 // without a new proof of life, files are deleted.
-func TestDeadlineTriggersFileDelection(t *testing.T) {
+func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
 	env := SetupTestEnv(t)
-	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
+	app, err := StartAppWithDeleteMethod(t, listenAddr, env.DataDir, env.StateDir, password, testInterval, deleteMode, "-q -Q 1")
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
 	}
@@ -183,6 +183,13 @@ func TestDeadlineTriggersFileDelection(t *testing.T) {
 	// Files should be deleted
 	AssertFilesDeleted(t, files)
 	t.Log("PASS: Files deleted at deadline")
+}
+
+func TestDeadlineTriggersRmDelection(t *testing.T) {
+	testDeadlineTriggersFileDelection(t, "rm")
+}
+func TestDeadlineTriggersWipeDelection(t *testing.T) {
+	testDeadlineTriggersFileDelection(t, "wipe")
 }
 
 // TestMultipleProofCycles verifies that multiple proof of life requests work correctly.
@@ -527,47 +534,6 @@ func TestRobustnessStateFileCorruptionRecovery(t *testing.T) {
 		t.Fatalf("unexpected startup failure for corrupted state: %v", err)
 	}
 	t.Logf("PASS: startup correctly failed with corrupted state: %v", err)
-}
-
-// TestDeadlineTriggersWipeDeletion verifies that when the wipe method is selected
-// and the deadline is exceeded, wipe is called and files are removed.
-func TestDeadlineTriggersWipeDeletion(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
-	listenAddr := nextListenAddr(t)
-
-	env := SetupTestEnv(t)
-	app, err := StartAppWithDeleteMethod(t, listenAddr, env.DataDir, env.StateDir, password, testInterval, "wipe", "-q -Q 1")
-	if err != nil {
-		t.Fatalf("failed to start app with wipe method: %v", err)
-	}
-	defer app.Stop()
-
-	client := NewAppClient(t, listenAddr, password)
-
-	proofStatus, err := client.ProofOfLife(ctx)
-	if err != nil {
-		t.Fatalf("failed to send initial proof: %v", err)
-	}
-	t.Logf("Proof sent: nextDeletion=%v", proofStatus["nextDeletion"])
-
-	files := CreateTestFiles(t, env.DataDir, 3)
-	AssertFilesExist(t, files)
-
-	t.Logf("Waiting for wipe deletion (interval=%v, maxWait=%v)...", testInterval, maxDeletionWait)
-	waitCtx, waitCancel := context.WithTimeout(ctx, maxDeletionWait+10*time.Second)
-	if err := WaitForDirEmpty(waitCtx, env.DataDir, maxDeletionWait); err != nil {
-		waitCancel()
-		t.Logf("App stdout: %s", app.Stdout())
-		if st, e := client.GetStatus(ctx); e == nil {
-			t.Logf("Final status: overdue=%v, nextDeletion=%v", st["overdue"], st["nextDeletion"])
-		}
-		t.Fatalf("files were not wiped after deadline: %v", err)
-	}
-	waitCancel()
-
-	AssertFilesDeleted(t, files)
-	t.Log("PASS: Files wiped at deadline using wipe method")
 }
 
 func TestRobustnessHealthCheckResponsivenessUnderLoad(t *testing.T) {
