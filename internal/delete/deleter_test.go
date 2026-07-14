@@ -39,17 +39,23 @@ func TestClearDirectory_RefusesDangerousPaths(t *testing.T) {
 	}
 }
 
-func TestClearDirectory_NonExistentDirectoryReturnsNil(t *testing.T) {
+func testClearDirectory_NonExistentDirectoryReturnsNil(t *testing.T, deleteMode string) {
 	d := t.TempDir()
 	missing := filepath.Join(d, "does-not-exist")
 
-	del := NewSafeDeleter(zerolog.Nop(), false, "rm", "", "info")
+	del := NewSafeDeleter(zerolog.Nop(), false, deleteMode, "-q -Q 1", "info")
 	if err := del.ClearDirectory(context.Background(), missing); err != nil {
 		t.Fatalf("expected nil for non-existent directory, got: %v", err)
 	}
 }
+func TestRmClearDirectory_NonExistentDirectoryReturnsNil(t *testing.T) {
+	testClearDirectory_NonExistentDirectoryReturnsNil(t, "rm")
+}
+func TestWipeClearDirectory_NonExistentDirectoryReturnsNil(t *testing.T) {
+	testClearDirectory_NonExistentDirectoryReturnsNil(t, "wipe")
+}
 
-func TestClearDirectory_DeletesRecursivelyAndKeepsRoot(t *testing.T) {
+func testClearDirectory_DeletesRecursivelyAndKeepsRoot(t *testing.T, deleteMode string) {
 	d := t.TempDir()
 	nested := filepath.Join(d, "a", "b", "c")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
@@ -61,7 +67,7 @@ func TestClearDirectory_DeletesRecursivelyAndKeepsRoot(t *testing.T) {
 	fshelpers.CreateTestFile(t, filepath.Join(d, "a", "b"), "b.txt")
 	fshelpers.CreateTestFile(t, nested, "c.txt")
 
-	del := NewSafeDeleter(zerolog.Nop(), false, "rm", "", "info")
+	del := NewSafeDeleter(zerolog.Nop(), false, deleteMode, "-q -Q 1", "info")
 	if err := del.ClearDirectory(context.Background(), d); err != nil {
 		t.Fatalf("clear failed: %v", err)
 	}
@@ -72,11 +78,19 @@ func TestClearDirectory_DeletesRecursivelyAndKeepsRoot(t *testing.T) {
 	fshelpers.AssertDirIsEmpty(t, d)
 }
 
+func TestRmClearDirectory_DeletesRecursivelyAndKeepsRoot(t *testing.T) {
+	testClearDirectory_DeletesRecursivelyAndKeepsRoot(t, "rm")
+}
+
+func TestWipeClearDirectory_DeletesRecursivelyAndKeepsRoot(t *testing.T) {
+	testClearDirectory_DeletesRecursivelyAndKeepsRoot(t, "wipe")
+}
+
 func testClearDirectory_DryRunKeepsContent(t *testing.T, deleteMode string) {
 	d := t.TempDir()
 	fshelpers.CreateTestFile(t, d, "file.txt")
 
-	del := NewSafeDeleter(zerolog.Nop(), true, deleteMode, "", "info")
+	del := NewSafeDeleter(zerolog.Nop(), true, deleteMode, "-q -Q 1", "info")
 	if err := del.ClearDirectory(context.Background(), d); err != nil {
 		t.Fatalf("%s clear failed: %v", deleteMode, err)
 	}
@@ -164,47 +178,5 @@ func TestBuildWipeArgs_DoesNotForceSilentInDebug(t *testing.T) {
 	args := buildWipeArgs("-q -Q 1", "debug", "/data/b")
 	if containsArg(args, "-s") {
 		t.Fatalf("did not expect -s when log level is debug, got: %v", args)
-	}
-}
-
-func TestClearDirectory_WipeRunsCommand(t *testing.T) {
-	d := t.TempDir()
-	fshelpers.CreateTestFile(t, d, "a")
-
-	var called bool
-	var gotBin string
-	del := NewSafeDeleter(zerolog.Nop(), false, "wipe", "-q -Q 1", "info")
-	del.runner = func(_ context.Context, bin string, args ...string) ([]byte, error) {
-		called = true
-		gotBin = bin
-		return []byte("ok"), nil
-	}
-
-	if err := del.ClearDirectory(context.Background(), d); err != nil {
-		t.Fatalf("expected wipe deletion to succeed, got: %v", err)
-	}
-	if !called {
-		t.Fatal("expected wipe command runner to be called")
-	}
-	if gotBin != "wipe" {
-		t.Fatalf("expected binary wipe, got %q", gotBin)
-	}
-}
-
-func TestClearDirectory_WipeDryRunSkipsCommand(t *testing.T) {
-	d := t.TempDir()
-
-	called := false
-	del := NewSafeDeleter(zerolog.Nop(), true, "wipe", "-q -Q 1", "info")
-	del.runner = func(_ context.Context, _ string, _ ...string) ([]byte, error) {
-		called = true
-		return nil, nil
-	}
-
-	if err := del.ClearDirectory(context.Background(), d); err != nil {
-		t.Fatalf("expected dry-run wipe to succeed, got: %v", err)
-	}
-	if called {
-		t.Fatal("expected wipe command runner not to be called in dry-run")
 	}
 }
