@@ -20,6 +20,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Install wipe tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wipe
+
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
