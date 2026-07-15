@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -14,6 +15,12 @@ import (
 
 	"github.com/rs/zerolog"
 )
+
+func TestWipeBinaryAvailableInTestEnvironment(t *testing.T) {
+	if _, err := exec.LookPath("wipe"); err != nil {
+		t.Fatalf("wipe binary is required for wipe-mode tests: %v", err)
+	}
+}
 
 func TestClearDirectory_RefusesDangerousPaths(t *testing.T) {
 	tests := []struct {
