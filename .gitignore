@@ -1,5 +1,5 @@
 # Binaries
-pulseorperish
+/pulseorperish
 *.exe
 *.dll
 *.so

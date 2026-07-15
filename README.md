@@ -56,9 +56,10 @@ See [homeassistant.md](./homeassistant.md) for a REST sensor and notifications a
 go run ./cmd/pulseorperish \
   --listen=':8086' \
   --password='mysecret' \
-  --data-dir='./demo-data' \
-  --state-dir='./demo-state' \
+  --data-dir="$(pwd)/demo-data" \
+  --state-dir="$(pwd)/demo-state" \
   --dry-run='true' \
+  --log-level='debug' \
   --interval='5m'
 ```
 
