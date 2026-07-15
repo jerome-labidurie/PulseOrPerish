@@ -130,3 +130,25 @@ func TestValidateWipeArgsAcceptsDocumentedOptions(t *testing.T) {
 		t.Fatalf("expected documented options to be accepted, got: %v", err)
 	}
 }
+
+func TestConfigRedactedMasksPassword(t *testing.T) {
+	cfg := Config{
+		ListenAddr: ":8080",
+		Password:   "super-secret",
+		DataDir:    "/data",
+		StateDir:   "/state",
+		LogLevel:   "info",
+	}
+
+	redacted := cfg.Redacted()
+
+	if redacted.Password != "***" {
+		t.Fatalf("expected masked password, got %q", redacted.Password)
+	}
+	if cfg.Password != "super-secret" {
+		t.Fatalf("expected original config to remain unchanged, got %q", cfg.Password)
+	}
+	if redacted.ListenAddr != cfg.ListenAddr || redacted.DataDir != cfg.DataDir || redacted.StateDir != cfg.StateDir || redacted.LogLevel != cfg.LogLevel {
+		t.Fatal("expected non-secret fields to be preserved")
+	}
+}

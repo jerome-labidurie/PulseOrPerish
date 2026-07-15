@@ -111,7 +111,7 @@ func main() {
 		_ = httpServer.Shutdown(sctx)
 	}()
 
-	logger.Info().Str("version", Version).Str("buildDate", BuildDate).Str("commit", CommitHash).Dur("tick", mon.Tick()).Interface("config", cfg).Msg("PulseOrPerish started")
+	logger.Info().Str("version", Version).Str("buildDate", BuildDate).Str("commit", CommitHash).Dur("tick", mon.Tick()).Interface("config", cfg.Redacted()).Msg("PulseOrPerish started")
 	status := mon.Snapshot(time.Now().UTC())
 	logger.Info().Time("nextDeletion", status.NextDeletion).Msg("Monitor started")
 
