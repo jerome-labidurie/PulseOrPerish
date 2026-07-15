@@ -5,6 +5,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,7 +61,7 @@ func (d *SafeDeleter) ClearDirectory(ctx context.Context, dir string) error {
 
 	entries, err := os.ReadDir(clean)
 	if err != nil {
-		return nil
+		return fmt.Errorf("read directory %q: %w", clean, err)
 	}
 	for _, e := range entries {
 		files = append(files, filepath.Join(clean, e.Name()))

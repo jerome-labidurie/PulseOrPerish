@@ -39,20 +39,20 @@ func TestClearDirectory_RefusesDangerousPaths(t *testing.T) {
 	}
 }
 
-func testClearDirectory_NonExistentDirectoryReturnsNil(t *testing.T, deleteMode string) {
+func testClearDirectory_NonExistentDirectoryReturnsError(t *testing.T, deleteMode string) {
 	d := t.TempDir()
 	missing := filepath.Join(d, "does-not-exist")
 
 	del := NewSafeDeleter(zerolog.Nop(), false, deleteMode, "-q -Q 1", "info")
-	if err := del.ClearDirectory(context.Background(), missing); err != nil {
-		t.Fatalf("expected nil for non-existent directory, got: %v", err)
+	if err := del.ClearDirectory(context.Background(), missing); err == nil {
+		t.Fatal("expected error for non-existent directory")
 	}
 }
-func TestRmClearDirectory_NonExistentDirectoryReturnsNil(t *testing.T) {
-	testClearDirectory_NonExistentDirectoryReturnsNil(t, "rm")
+func TestRmClearDirectory_NonExistentDirectoryReturnsError(t *testing.T) {
+	testClearDirectory_NonExistentDirectoryReturnsError(t, "rm")
 }
-func TestWipeClearDirectory_NonExistentDirectoryReturnsNil(t *testing.T) {
-	testClearDirectory_NonExistentDirectoryReturnsNil(t, "wipe")
+func TestWipeClearDirectory_NonExistentDirectoryReturnsError(t *testing.T) {
+	testClearDirectory_NonExistentDirectoryReturnsError(t, "wipe")
 }
 
 func testClearDirectory_DeletesRecursivelyAndKeepsRoot(t *testing.T, deleteMode string) {
