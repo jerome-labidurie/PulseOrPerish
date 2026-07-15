@@ -50,14 +50,6 @@ func validateDataDirPermissions(log zerolog.Logger, dataDir string) error {
 	return nil
 }
 
-func resolveDataDir(dataDir string) (string, error) {
-	resolved, err := filepath.EvalSymlinks(filepath.Clean(dataDir))
-	if err != nil {
-		return "", fmt.Errorf("resolve data directory: %w", err)
-	}
-	return resolved, nil
-}
-
 // main wires configuration, logging, monitoring and the HTTP server lifecycle.
 func main() {
 	// Handle -version flag early
@@ -83,12 +75,9 @@ func main() {
 		defer func() { _ = closer.Close() }()
 	}
 
-	resolvedDataDir, err := resolveDataDir(cfg.DataDir)
+	resolvedDataDir, err := delete.ResolveSafeDir(cfg.DataDir)
 	if err != nil {
-		logger.Fatal().Err(err).Str("dataDir", cfg.DataDir).Msg("failed resolving data directory")
-	}
-	if resolvedDataDir != cfg.DataDir {
-		logger.Warn().Str("original", cfg.DataDir).Str("resolved", resolvedDataDir).Msg("data directory is a symlink, using resolved path")
+		logger.Fatal().Err(err).Str("dataDir", cfg.DataDir).Msg("invalid data directory")
 	}
 	cfg.DataDir = resolvedDataDir
 

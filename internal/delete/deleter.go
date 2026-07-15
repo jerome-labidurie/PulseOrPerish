@@ -4,7 +4,6 @@ package delete
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -54,9 +53,9 @@ func NewSafeDeleter(log zerolog.Logger, dryRun bool, deleteMode, wipeArgs, logLe
 func (d *SafeDeleter) ClearDirectory(ctx context.Context, dir string) error {
 	files := []string{}
 
-	clean := filepath.Clean(dir)
-	if clean == "." || clean == "" || clean == "/" {
-		return errors.New("refusing to clear dangerous path")
+	clean, err := ResolveSafeDir(dir)
+	if err != nil {
+		return fmt.Errorf("validate data directory: %w", err)
 	}
 
 	entries, err := os.ReadDir(clean)
