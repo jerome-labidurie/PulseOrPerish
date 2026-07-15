@@ -53,12 +53,11 @@ See [homeassistant.md](./homeassistant.md) for a REST sensor and notifications a
 
 ## Run locally
 ```bash
-mkdir /tmp/pop-data
 go run ./cmd/pulseorperish \
   --listen=':8086' \
   --password='mysecret' \
-  --data-dir='/tmp/pop-data' \
-  --state-dir='/tmp/pop-state' \
+  --data-dir='./demo-data' \
+  --state-dir='./demo-state' \
   --dry-run='true' \
   --interval='5m'
 ```

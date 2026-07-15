@@ -12,18 +12,19 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// New creates a zerolog.Logger at the given level. Logs are always written to
-// stdout. When path is non-empty it must be an existing directory: a timestamped
-// file (format 20060102-150405.log) is created inside it and logs are written
-// to both stdout and that file. The returned io.Closer must be closed by the
-// caller when path is non-empty.
+// New creates a zerolog.Logger at the given level. Logs are written in a human-
+// readable console format to stdout. When path is non-empty it must be an
+// existing directory: a timestamped file (format 20060102-150405.log) is
+// created inside it and logs are also written there in JSON format. The
+// returned io.Closer must be closed by the caller when path is non-empty.
 func New(level, path string) (zerolog.Logger, io.Closer, error) {
 	lvl, err := parseLevel(level)
 	if err != nil {
 		return zerolog.Logger{}, nil, err
 	}
 
-	var w io.Writer = os.Stdout
+	stdoutWriter := zerolog.ConsoleWriter{Out: os.Stdout}
+	var w io.Writer = stdoutWriter
 	var c io.Closer
 	if strings.TrimSpace(path) != "" {
 		info, err := os.Stat(path)
@@ -38,7 +39,7 @@ func New(level, path string) (zerolog.Logger, io.Closer, error) {
 		if err != nil {
 			return zerolog.Logger{}, nil, fmt.Errorf("log-path: %w", err)
 		}
-		w = io.MultiWriter(os.Stdout, f)
+		w = io.MultiWriter(stdoutWriter, f)
 		c = f
 	}
 
