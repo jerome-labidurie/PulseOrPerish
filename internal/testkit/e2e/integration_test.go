@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"pulseorperish/internal/state"
 )
 
 const (
@@ -290,6 +292,52 @@ func TestStatePersistenceAcrossRestart(t *testing.T) {
 	// The state file may not persist perfectly if the first instance didn't flush,
 	// so we just verify the app restarted correctly (not crashing)
 	t.Log("PASS: State persists across restart (app restarted successfully)")
+}
+
+func TestStartupWithOverdueStateTriggersDeletion(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	listenAddr := nextListenAddr(t)
+
+	env := SetupTestEnv(t)
+	files := CreateTestFiles(t, env.DataDir, 4)
+	AssertFilesExist(t, files)
+
+	overdueState := state.HeartbeatState{
+		Version:     1,
+		LastProofAt: time.Now().UTC().Add(-(fastDeletionInterval + 2*time.Minute)),
+		UpdatedBy:   "e2e-overdue-state",
+	}
+	b, err := json.MarshalIndent(overdueState, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal overdue state: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(env.StateDir, "heartbeat_state.json"), b, 0o600); err != nil {
+		t.Fatalf("failed to write overdue state: %v", err)
+	}
+
+	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, fastDeletionInterval)
+	if err != nil {
+		t.Fatalf("failed to start app with overdue state: %v", err)
+	}
+	defer app.Stop()
+
+	client := NewAppClient(t, listenAddr, password)
+	status, err := client.GetStatus(ctx)
+	if err != nil {
+		t.Fatalf("failed to get status: %v", err)
+	}
+	if overdue, ok := status["overdue"].(bool); !ok || !overdue {
+		t.Fatalf("expected overdue=true at startup, got %#v", status["overdue"])
+	}
+
+	t.Logf("Overdue state loaded, waiting for deletion on first monitor tick (interval=%v, maxWait=%v)", fastDeletionInterval, fastDeletionWait)
+	if err := WaitForDirEmpty(ctx, env.DataDir, fastDeletionWait); err != nil {
+		t.Fatalf("overdue startup state did not trigger deletion: %v\nstdout: %s", err, app.Stdout())
+	}
+	AssertDirIsEmpty(t, env.DataDir)
+	requireAppStillHealthy(t, listenAddr)
+	t.Log("PASS: overdue persisted state triggers deletion after startup")
 }
 
 // TestAuthenticationSecurity verifies Bearer token auth and rejects invalid passwords.
