@@ -41,6 +41,15 @@ type Config struct {
 	LogLevel   string
 }
 
+// Redacted returns a copy of the config safe to emit in logs.
+func (c Config) Redacted() Config {
+	copy := c
+	if copy.Password != "" {
+		copy.Password = "***"
+	}
+	return copy
+}
+
 // Load parses args and environment variables into a Config.
 // Flags take precedence over environment variables.
 // It returns an error if parsing fails or the resulting config is invalid.
