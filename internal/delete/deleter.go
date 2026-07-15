@@ -74,6 +74,28 @@ func (d *SafeDeleter) ClearDirectory(ctx context.Context, dir string) error {
 }
 
 func (d *SafeDeleter) clearWithRm(ctx context.Context, files []string) error {
+	return d.clearTargets(ctx, files, func(target string) {
+		if err := os.RemoveAll(target); err != nil {
+			d.log.Error().Err(err).Str("path", target).Msg("failed deleting entry")
+		} else {
+			d.log.Debug().Str("path", target).Msg("deleted entry")
+		}
+	})
+}
+
+func (d *SafeDeleter) clearWithWipe(ctx context.Context, files []string) error {
+	return d.clearTargets(ctx, files, func(target string) {
+		args := buildWipeArgs(d.wipeArgs, d.logLevel, target)
+		d.log.Info().Str("args", strings.Join(args, " ")).Msg("Starting wipe")
+		out, err := d.runner(ctx, "wipe", args...)
+		if err != nil {
+			d.log.Error().Err(err).Str("output", string(out)).Msg("wipe command failed")
+		}
+		d.log.Debug().Str("path", target).Str("output", string(out)).Msg("wipe command executed")
+	})
+}
+
+func (d *SafeDeleter) clearTargets(ctx context.Context, files []string, clearFn func(target string)) error {
 	for _, target := range files {
 		select {
 		case <-ctx.Done():
@@ -84,29 +106,7 @@ func (d *SafeDeleter) clearWithRm(ctx context.Context, files []string) error {
 			d.log.Warn().Str("path", target).Msg("dry-run enabled: would delete entry")
 			continue
 		}
-		if err := os.RemoveAll(target); err != nil {
-			d.log.Error().Err(err).Str("path", target).Msg("failed deleting entry")
-		} else {
-			d.log.Debug().Str("path", target).Msg("deleted entry")
-		}
-	}
-	return nil
-}
-
-func (d *SafeDeleter) clearWithWipe(ctx context.Context, files []string) error {
-
-	for _, target := range files {
-		if d.dryRun {
-			d.log.Warn().Str("path", target).Msg("dry-run enabled: would delete entry")
-			continue
-		}
-		args := buildWipeArgs(d.wipeArgs, d.logLevel, target)
-		d.log.Info().Str("args", strings.Join(args, " ")).Msg("Starting wipe")
-		out, err := d.runner(ctx, "wipe", args...)
-		if err != nil {
-			d.log.Error().Err(err).Str("output", string(out)).Msg("wipe command failed")
-		}
-		d.log.Debug().Str("path", target).Str("output", string(out)).Msg("wipe command runned")
+		clearFn(target)
 	}
 	return nil
 }

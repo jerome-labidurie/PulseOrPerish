@@ -3,6 +3,7 @@ package delete
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -106,6 +107,28 @@ func TestRmClearDirectory_DryRunKeepsContent(t *testing.T) {
 
 func TestWipeClearDirectory_DryRunKeepsContent(t *testing.T) {
 	testClearDirectory_DryRunKeepsContent(t, "wipe")
+}
+
+func testClearDirectory_RespectsCanceledContext(t *testing.T, deleteMode string) {
+	d := t.TempDir()
+	fshelpers.CreateTestFile(t, d, "file.txt")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	del := NewSafeDeleter(zerolog.Nop(), false, deleteMode, "-q -Q 1", "info")
+	err := del.ClearDirectory(ctx, d)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context canceled error in %s mode, got: %v", deleteMode, err)
+	}
+}
+
+func TestRmClearDirectory_RespectsCanceledContext(t *testing.T) {
+	testClearDirectory_RespectsCanceledContext(t, "rm")
+}
+
+func TestWipeClearDirectory_RespectsCanceledContext(t *testing.T) {
+	testClearDirectory_RespectsCanceledContext(t, "wipe")
 }
 
 func TestClearDirectory_ContinuesWhenRemoveAllFails(t *testing.T) {
