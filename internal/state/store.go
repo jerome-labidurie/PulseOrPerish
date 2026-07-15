@@ -76,18 +76,42 @@ func (s *Store) Save(st HeartbeatState) error {
 		return err
 	}
 
-	tmpPath := s.path + ".tmp"
-	if err := os.WriteFile(tmpPath, b, 0o600); err != nil {
+	tmpFile, err := os.CreateTemp(s.dir, fileName+".*.tmp")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmpPath, s.path); err != nil {
+	tmpPath := tmpFile.Name()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmpFile.Write(b); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
 		return err
 	}
 
+	if err := os.Rename(tmpPath, s.path); err != nil {
+		return err
+	}
+	committed = true
+
 	df, err := os.Open(s.dir)
-	if err == nil {
-		_ = df.Sync()
-		_ = df.Close()
+	if err != nil {
+		return err
+	}
+	defer df.Close()
+	if err := df.Sync(); err != nil {
+		return err
 	}
 	return nil
 }
