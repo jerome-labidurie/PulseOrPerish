@@ -95,21 +95,3 @@ func AssertDirNotEmpty(t *testing.T, dir string) {
 		t.Errorf("directory should not be empty: %s", dir)
 	}
 }
-
-// FindFirstFileInDir returns the path to the first file found in a directory.
-// Returns empty string if directory is empty or does not exist.
-func FindFirstFileInDir(dir string) (string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
-	}
-
-	if len(entries) == 0 {
-		return "", nil
-	}
-
-	return filepath.Join(dir, entries[0].Name()), nil
-}
