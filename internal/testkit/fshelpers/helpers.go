@@ -14,7 +14,7 @@ func CreateTestFile(t *testing.T, dir, name string) string {
 
 	filePath := filepath.Join(dir, name)
 	if err := os.WriteFile(filePath, []byte("test data"), 0o644); err != nil {
-		t.Fatalf("failed to create test file: %v", err)
+		t.Fatalf("failed to create test file: %s %v", filePath, err)
 	}
 	return filePath
 }
@@ -31,6 +31,33 @@ func CreateTestFiles(t *testing.T, dir string, count int) []string {
 		files = append(files, filePath)
 	}
 	return files
+}
+
+// CreateNestedTestFiles create multiple test file in nested filepaths
+// Returns the list of full paths to the created files.
+func CreateNestedTestFiles(t *testing.T, dir string) []string {
+	var files []string
+
+	multipledirs := [][]string{
+		{dir, "a", "b", "c"},
+		{dir, "azerty", "qwerty"},
+	}
+
+	for _, dirs := range multipledirs {
+		nested := filepath.Join(dirs...)
+		if err := os.MkdirAll(nested, 0o755); err != nil {
+			t.Fatalf("failed creating nested directories: %v", err)
+		}
+
+		for i := range len(dirs) {
+			subdir := filepath.Join(dirs[:i+1]...)
+			created := CreateTestFiles(t, subdir, 2)
+			files = append(files, created...)
+		}
+	}
+	// t.Logf("%v", files)
+	return files
+
 }
 
 // AssertFilesExist verifies that all given file paths exist.

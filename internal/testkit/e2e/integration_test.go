@@ -776,21 +776,9 @@ func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
 	}
 	defer app.Stop()
 
-	nested := []string{
-		filepath.Join(env.DataDir, "a"),
-		filepath.Join(env.DataDir, "a", "b"),
-		filepath.Join(env.DataDir, "a", "b", "c"),
-		filepath.Join(env.DataDir, "x", "y"),
-	}
-	for _, dir := range nested {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("failed to create nested dir %s: %v", dir, err)
-		}
-		fshelpers.CreateTestFile(t, dir, "f.txt")
-	}
-	fshelpers.CreateTestFile(t, env.DataDir, "root.txt")
+	nested := fshelpers.CreateNestedTestFiles(t, env.DataDir)
 
-	t.Logf("Data dir prepared with %d nested directories (interval=%v, maxWait=%v)", len(nested), fastDeletionInterval, fastDeletionWait)
+	t.Logf("Data dir prepared with %d nested files (interval=%v, maxWait=%v)", len(nested), fastDeletionInterval, fastDeletionWait)
 
 	client := NewAppClient(t, listenAddr, password)
 	if _, err := client.ProofOfLife(ctx); err != nil {
