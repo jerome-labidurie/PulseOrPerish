@@ -1,9 +1,11 @@
 FROM golang:1.26-trixie AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
+# don't care about the exact versions
+# hadolint ignore=DL3008
 RUN go mod download; \
     apt-get update; \
-    apt-get install -y git wipe
+    apt-get install -y --no-install-recommends git wipe
 COPY . .
 
 ARG VERSION=dev
@@ -12,7 +14,9 @@ RUN BUILD_DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ') && \
     COMMIT=$(git rev-parse --short HEAD) && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o /out/pulseorperish ./cmd/pulseorperish
 
-FROM gcr.io/distroless/static-debian13
+# no tag for distroless
+# hadolint ignore=DL3006
+FROM gcr.io/distroless/static-debian13 AS runner
 
 WORKDIR /
 COPY --from=builder /out/pulseorperish /pulseorperish

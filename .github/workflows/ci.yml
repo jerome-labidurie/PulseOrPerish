@@ -50,6 +50,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Dockerfile linter
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: Dockerfile
+
       - name: Build Docker image (no push)
         run: docker build -t pulseorperish:ci-check .
 
