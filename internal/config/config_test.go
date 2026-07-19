@@ -7,7 +7,7 @@ import (
 
 func TestLoadAndValidate(t *testing.T) {
 	t.Setenv("POP_PASSWORD", "pw")
-	t.Setenv("POP_DATA_DIR", "/data")
+	t.Setenv("POP_DATA_DIRS", "/data")
 
 	cfg, err := Load([]string{})
 	if err != nil {
@@ -28,7 +28,7 @@ func TestLoadAndValidate(t *testing.T) {
 }
 
 func TestRequiresPassword(t *testing.T) {
-	t.Setenv("POP_DATA_DIR", "/data")
+	t.Setenv("POP_DATA_DIRS", "/data")
 	_, err := Load([]string{})
 	if err == nil {
 		t.Fatal("expected error")
@@ -37,7 +37,7 @@ func TestRequiresPassword(t *testing.T) {
 
 func TestDryRunFromEnv(t *testing.T) {
 	t.Setenv("POP_PASSWORD", "pw")
-	t.Setenv("POP_DATA_DIR", "/data")
+	t.Setenv("POP_DATA_DIRS", "/data")
 	t.Setenv("POP_DRY_RUN", "true")
 
 	cfg, err := Load([]string{})
@@ -51,7 +51,7 @@ func TestDryRunFromEnv(t *testing.T) {
 
 func TestDeleteMethodFromEnv(t *testing.T) {
 	t.Setenv("POP_PASSWORD", "pw")
-	t.Setenv("POP_DATA_DIR", "/data")
+	t.Setenv("POP_DATA_DIRS", "/data")
 	t.Setenv("POP_DELETE_METHOD", "wipe")
 	t.Setenv("POP_WIPE_ARGS", "-q -Q 1")
 
@@ -66,7 +66,7 @@ func TestDeleteMethodFromEnv(t *testing.T) {
 
 func TestDeleteMethodFlagOverridesEnv(t *testing.T) {
 	t.Setenv("POP_PASSWORD", "pw")
-	t.Setenv("POP_DATA_DIR", "/data")
+	t.Setenv("POP_DATA_DIRS", "/data")
 	t.Setenv("POP_DELETE_METHOD", "wipe")
 
 	cfg, err := Load([]string{"-delete-method=rm"})
@@ -80,7 +80,7 @@ func TestDeleteMethodFlagOverridesEnv(t *testing.T) {
 
 func TestWipeArgsFromEnv(t *testing.T) {
 	t.Setenv("POP_PASSWORD", "pw")
-	t.Setenv("POP_DATA_DIR", "/data")
+	t.Setenv("POP_DATA_DIRS", "/data")
 	t.Setenv("POP_DELETE_METHOD", "wipe")
 	t.Setenv("POP_WIPE_ARGS", "-q -Q 3 -e")
 
@@ -95,7 +95,7 @@ func TestWipeArgsFromEnv(t *testing.T) {
 
 func TestValidateDeleteMethodMustBeRmOrWipe(t *testing.T) {
 	t.Setenv("POP_PASSWORD", "pw")
-	t.Setenv("POP_DATA_DIR", "/data")
+	t.Setenv("POP_DATA_DIRS", "/data")
 
 	_, err := Load([]string{"-delete-method=other"})
 	if err == nil {
@@ -108,7 +108,7 @@ func TestValidateDeleteMethodMustBeRmOrWipe(t *testing.T) {
 
 func TestValidateWipeArgsRejectsPositionalPath(t *testing.T) {
 	t.Setenv("POP_PASSWORD", "pw")
-	t.Setenv("POP_DATA_DIR", "/data")
+	t.Setenv("POP_DATA_DIRS", "/data")
 	t.Setenv("POP_DELETE_METHOD", "wipe")
 
 	_, err := Load([]string{"-wipe-args=-q -Q 1 /tmp/evil"})
@@ -122,7 +122,7 @@ func TestValidateWipeArgsRejectsPositionalPath(t *testing.T) {
 
 func TestValidateWipeArgsAcceptsDocumentedOptions(t *testing.T) {
 	t.Setenv("POP_PASSWORD", "pw")
-	t.Setenv("POP_DATA_DIR", "/data")
+	t.Setenv("POP_DATA_DIRS", "/data")
 	t.Setenv("POP_DELETE_METHOD", "wipe")
 
 	args := "-q -Q 2 -b 12 -e -F -k -l 4K -M a -o 1M -P 1 -R /dev/urandom -S r -T 2 -Z"
