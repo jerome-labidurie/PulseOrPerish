@@ -111,9 +111,9 @@ func setupTestEnv(t *testing.T, nb int) TestEnv {
 	}
 }
 
-// TestProofOfLifeRepousseDeadline verifies that sending a proof of life
-// repousse the deadline and prevents file deletion.
-func TestProofOfLifeRepousseDeadline(t *testing.T) {
+// TestProofOfLifePostponePostponeDeadline verifies that sending a proof of life
+// postpone the deadline and prevents file deletion.
+func TestProofOfLifePostponePostponeDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
@@ -158,10 +158,10 @@ func TestProofOfLifeRepousseDeadline(t *testing.T) {
 	}
 
 	if nextDel1 >= nextDel2 {
-		t.Errorf("deadline should have been repousse: %s -> %s", nextDel1, nextDel2)
+		t.Errorf("deadline should have been postponed: %s -> %s", nextDel1, nextDel2)
 	}
 
-	t.Logf("PASS: Deadline repousse from %s to %s", nextDel1, nextDel2)
+	t.Logf("PASS: Deadline postponed from %s to %s", nextDel1, nextDel2)
 }
 
 // TestDeadlineTriggersFileDelection verifies that when the deadline arrives
