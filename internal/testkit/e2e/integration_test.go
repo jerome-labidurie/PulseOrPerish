@@ -192,7 +192,7 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	// Create test files after the deadline is anchored
 	var files []string
 	for _, dir := range env.DataDir {
-		f := fshelpers.CreateTestFiles(t, dir, 5)
+		f := fshelpers.CreateNestedTestFiles(t, dir)
 		files = append(files, f...)
 	}
 	fshelpers.AssertFilesExist(t, files)
@@ -214,7 +214,10 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	waitCancel()
 
 	// Files should be deleted
-	fshelpers.AssertFilesDeleted(t, files)
+	for _, dir := range env.DataDir {
+		fshelpers.AssertDirIsEmpty(t, dir)
+	}
+	requireAppStillHealthy(t, listenAddr)
 	t.Log("PASS: Files deleted at deadline")
 }
 
@@ -793,35 +796,4 @@ func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
 	}
 	requireAppStillHealthy(t, listenAddr)
 	t.Log("PASS: symlinks and special files cleared without following symlink targets")
-}
-
-func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	listenAddr := nextListenAddr(t)
-	env := setupTestEnv(t, 1)
-	dataDir := env.DataDir[0]
-
-	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, fastDeletionInterval)
-	if err != nil {
-		t.Fatalf("failed to start app: %v", err)
-	}
-	defer app.Stop()
-
-	nested := fshelpers.CreateNestedTestFiles(t, dataDir)
-
-	t.Logf("Data dir prepared with %d nested files (interval=%v, maxWait=%v)", len(nested), fastDeletionInterval, fastDeletionWait)
-
-	client := NewAppClient(t, listenAddr, password)
-	if _, err := client.ProofOfLife(ctx); err != nil {
-		t.Fatalf("failed to send proof: %v", err)
-	}
-
-	t.Log("Waiting for deletion of nested directory tree...")
-	if err := WaitForDirEmpty(ctx, dataDir, fastDeletionWait); err != nil {
-		t.Fatalf("nested directory content not deleted: %v\nstdout: %s", err, app.Stdout())
-	}
-	fshelpers.AssertDirIsEmpty(t, dataDir)
-	requireAppStillHealthy(t, listenAddr)
-	t.Log("PASS: nested directory tree fully deleted")
 }
