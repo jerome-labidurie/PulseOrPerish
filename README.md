@@ -7,14 +7,14 @@
 
 Dead man switch in Go.
 
-Protect what matters with a simple heartbeat: as long as you are alive, your data stays safe; if you stop checking in, **PulseOrPerish** automatically wipes the target directory. Lightweight, self-hosted, and ready in minutes with a web UI, API, and container support.
+Protect what matters with a simple heartbeat: as long as you are alive, your data stays safe; if you stop checking in, **PulseOrPerish** automatically wipes the target directories. Lightweight, self-hosted, and ready in minutes with a web UI, API, and container support.
 
 ## Features
 - HTTP User Interface to submit proof-of-life with a password (with Dark mode)
 - REST API with same capabilities
 - Persistent heartbeat state surviving container restarts
-- Automatic data directory content wipe when deadline is exceeded
-  simple or secure deletion using [wipe](https://wipe.sourceforge.net/)
+- Automatic data directories content wipe when deadline is exceeded
+- Simple or secure deletion using [wipe](https://wipe.sourceforge.net/)
 - Configurable via CLI flags and environment variables
 - Distroless-compatible container image
 
