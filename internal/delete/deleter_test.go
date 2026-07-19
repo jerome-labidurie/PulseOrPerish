@@ -65,15 +65,7 @@ func TestWipeClearDirectory_NonExistentDirectoryReturnsError(t *testing.T) {
 
 func testClearDirectory_DeletesRecursivelyAndKeepsRoot(t *testing.T, deleteMode string) {
 	d := t.TempDir()
-	nested := filepath.Join(d, "a", "b", "c")
-	if err := os.MkdirAll(nested, 0o755); err != nil {
-		t.Fatalf("failed creating nested directories: %v", err)
-	}
-
-	fshelpers.CreateTestFile(t, d, "root.txt")
-	fshelpers.CreateTestFile(t, filepath.Join(d, "a"), "a.txt")
-	fshelpers.CreateTestFile(t, filepath.Join(d, "a", "b"), "b.txt")
-	fshelpers.CreateTestFile(t, nested, "c.txt")
+	fshelpers.CreateNestedTestFiles(t, d)
 
 	del := NewSafeDeleter(zerolog.Nop(), false, deleteMode, "-q -Q 1", "info")
 	if err := del.ClearDirectory(context.Background(), d); err != nil {

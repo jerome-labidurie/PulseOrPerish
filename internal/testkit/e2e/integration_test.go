@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"pulseorperish/internal/state"
+	"pulseorperish/internal/testkit/fshelpers"
 )
 
 const (
@@ -101,8 +102,8 @@ func TestProofOfLifeRepousseDeadline(t *testing.T) {
 	client := NewAppClient(t, listenAddr, password)
 
 	// Create test files
-	files := CreateTestFiles(t, env.DataDir, 3)
-	AssertFilesExist(t, files)
+	files := fshelpers.CreateTestFiles(t, env.DataDir, 3)
+	fshelpers.AssertFilesExist(t, files)
 
 	// Send proof of life
 	status1, err := client.ProofOfLife(ctx)
@@ -120,7 +121,7 @@ func TestProofOfLifeRepousseDeadline(t *testing.T) {
 	}
 
 	// Files should still exist
-	AssertFilesExist(t, files)
+	fshelpers.AssertFilesExist(t, files)
 
 	// NextDeletion in status2 should be later than status1
 	nextDel1, ok1 := status1["nextDeletion"].(string)
@@ -163,8 +164,8 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	t.Logf("Proof sent: nextDeletion=%v", proofStatus["nextDeletion"])
 
 	// Create test files after the deadline is anchored
-	files := CreateTestFiles(t, env.DataDir, 5)
-	AssertFilesExist(t, files)
+	files := fshelpers.CreateTestFiles(t, env.DataDir, 5)
+	fshelpers.AssertFilesExist(t, files)
 	t.Logf("Created %d test files", len(files))
 
 	// Wait for deletion.
@@ -183,7 +184,7 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	waitCancel()
 
 	// Files should be deleted
-	AssertFilesDeleted(t, files)
+	fshelpers.AssertFilesDeleted(t, files)
 	t.Log("PASS: Files deleted at deadline")
 }
 
@@ -213,8 +214,8 @@ func TestMultipleProofCycles(t *testing.T) {
 		t.Logf("Cycle %d: sending proof of life", cycle)
 
 		// Create files
-		files := CreateTestFiles(t, env.DataDir, 2)
-		AssertFilesExist(t, files)
+		files := fshelpers.CreateTestFiles(t, env.DataDir, 2)
+		fshelpers.AssertFilesExist(t, files)
 
 		// Send proof of life
 		status, err := client.ProofOfLife(ctx)
@@ -224,7 +225,7 @@ func TestMultipleProofCycles(t *testing.T) {
 		t.Logf("Cycle %d: proof accepted, nextDeletion=%v", cycle, status["nextDeletion"])
 
 		// Files should still exist
-		AssertFilesExist(t, files)
+		fshelpers.AssertFilesExist(t, files)
 
 		// Small wait between cycles
 		time.Sleep(2 * time.Second)
@@ -300,8 +301,8 @@ func TestStartupWithOverdueStateTriggersDeletion(t *testing.T) {
 	listenAddr := nextListenAddr(t)
 
 	env := SetupTestEnv(t)
-	files := CreateTestFiles(t, env.DataDir, 4)
-	AssertFilesExist(t, files)
+	files := fshelpers.CreateTestFiles(t, env.DataDir, 4)
+	fshelpers.AssertFilesExist(t, files)
 
 	overdueState := state.HeartbeatState{
 		Version:     1,
@@ -335,7 +336,7 @@ func TestStartupWithOverdueStateTriggersDeletion(t *testing.T) {
 	if err := WaitForDirEmpty(ctx, env.DataDir, fastDeletionWait); err != nil {
 		t.Fatalf("overdue startup state did not trigger deletion: %v\nstdout: %s", err, app.Stdout())
 	}
-	AssertDirIsEmpty(t, env.DataDir)
+	fshelpers.AssertDirIsEmpty(t, env.DataDir)
 	requireAppStillHealthy(t, listenAddr)
 	t.Log("PASS: overdue persisted state triggers deletion after startup")
 }
@@ -432,8 +433,8 @@ func TestDryRunModePreventsDeletion(t *testing.T) {
 	defer app.Stop()
 
 	// Create test files
-	files := CreateTestFiles(t, env.DataDir, 3)
-	AssertFilesExist(t, files)
+	files := fshelpers.CreateTestFiles(t, env.DataDir, 3)
+	fshelpers.AssertFilesExist(t, files)
 
 	client := NewAppClient(t, listenAddr, password)
 	if _, err := client.ProofOfLife(ctx); err != nil {
@@ -451,7 +452,7 @@ func TestDryRunModePreventsDeletion(t *testing.T) {
 	}
 
 	// Files should still exist despite deadline being exceeded
-	AssertFilesExist(t, files)
+	fshelpers.AssertFilesExist(t, files)
 
 	// Check logs to see dry-run message in stdout
 	logs := app.Stdout()
@@ -475,8 +476,8 @@ func TestRobustnessConcurrentProofOfLifeRequests(t *testing.T) {
 	defer app.Stop()
 
 	client := NewAppClient(t, listenAddr, password)
-	files := CreateTestFiles(t, env.DataDir, 5)
-	AssertFilesExist(t, files)
+	files := fshelpers.CreateTestFiles(t, env.DataDir, 5)
+	fshelpers.AssertFilesExist(t, files)
 
 	t.Log("Sending 40 concurrent proof-of-life requests (10 goroutines × 4 requests)...")
 	var failed int32
@@ -505,7 +506,7 @@ func TestRobustnessConcurrentProofOfLifeRequests(t *testing.T) {
 	if overdue, ok := status["overdue"].(bool); !ok || overdue {
 		t.Fatalf("expected overdue=false after concurrent proofs, got %#v", status["overdue"])
 	}
-	AssertFilesExist(t, files)
+	fshelpers.AssertFilesExist(t, files)
 	t.Logf("PASS: 40 concurrent proofs accepted, overdue=false, nextDeletion=%v", status["nextDeletion"])
 }
 
@@ -725,14 +726,14 @@ func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
 	defer app.Stop()
 
 	outsideDir := t.TempDir()
-	outsideFile := CreateTestFile(t, outsideDir, "outside.txt")
+	outsideFile := fshelpers.CreateTestFile(t, outsideDir, "outside.txt")
 
 	innerDir := filepath.Join(env.DataDir, "nested")
 	if err := os.MkdirAll(innerDir, 0o755); err != nil {
 		t.Fatalf("failed to create inner dir: %v", err)
 	}
-	CreateTestFile(t, env.DataDir, "root.txt")
-	CreateTestFile(t, innerDir, "inner.txt")
+	fshelpers.CreateTestFile(t, env.DataDir, "root.txt")
+	fshelpers.CreateTestFile(t, innerDir, "inner.txt")
 
 	if err := os.Symlink(outsideFile, filepath.Join(env.DataDir, "outside-file-link")); err != nil {
 		t.Fatalf("failed to create file symlink: %v", err)
@@ -775,21 +776,9 @@ func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
 	}
 	defer app.Stop()
 
-	nested := []string{
-		filepath.Join(env.DataDir, "a"),
-		filepath.Join(env.DataDir, "a", "b"),
-		filepath.Join(env.DataDir, "a", "b", "c"),
-		filepath.Join(env.DataDir, "x", "y"),
-	}
-	for _, dir := range nested {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("failed to create nested dir %s: %v", dir, err)
-		}
-		CreateTestFile(t, dir, "f.txt")
-	}
-	CreateTestFile(t, env.DataDir, "root.txt")
+	nested := fshelpers.CreateNestedTestFiles(t, env.DataDir)
 
-	t.Logf("Data dir prepared with %d nested directories (interval=%v, maxWait=%v)", len(nested), fastDeletionInterval, fastDeletionWait)
+	t.Logf("Data dir prepared with %d nested files (interval=%v, maxWait=%v)", len(nested), fastDeletionInterval, fastDeletionWait)
 
 	client := NewAppClient(t, listenAddr, password)
 	if _, err := client.ProofOfLife(ctx); err != nil {
@@ -800,7 +789,7 @@ func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
 	if err := WaitForDirEmpty(ctx, env.DataDir, fastDeletionWait); err != nil {
 		t.Fatalf("nested directory content not deleted: %v\nstdout: %s", err, app.Stdout())
 	}
-	AssertDirIsEmpty(t, env.DataDir)
+	fshelpers.AssertDirIsEmpty(t, env.DataDir)
 	requireAppStillHealthy(t, listenAddr)
 	t.Log("PASS: nested directory tree fully deleted")
 }
