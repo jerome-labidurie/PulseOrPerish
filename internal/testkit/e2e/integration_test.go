@@ -41,6 +41,12 @@ const (
 	fastDeletionWait     = 95 * time.Second
 )
 
+// TestEnv holds temporary directories for a test run.
+type TestEnv struct {
+	DataDir  string
+	StateDir string
+}
+
 func requireAppStillHealthy(t *testing.T, listenAddr string) {
 	t.Helper()
 	resp, err := http.Get("http://" + listenAddr + "/health")
@@ -85,6 +91,20 @@ func nextListenAddr(t *testing.T) string {
 	return addr
 }
 
+// setupTestEnv creates isolated temporary directories for test data.
+// The returned cleanup function removes all temporary files when called.
+func setupTestEnv(t *testing.T) TestEnv {
+	t.Helper()
+
+	dataDir := t.TempDir()
+	stateDir := t.TempDir()
+
+	return TestEnv{
+		DataDir:  dataDir,
+		StateDir: stateDir,
+	}
+}
+
 // TestProofOfLifeRepousseDeadline verifies that sending a proof of life
 // repousse the deadline and prevents file deletion.
 func TestProofOfLifeRepousseDeadline(t *testing.T) {
@@ -92,7 +112,7 @@ func TestProofOfLifeRepousseDeadline(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -145,7 +165,7 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 	app, err := StartAppWithDeleteMethod(t, listenAddr, env.DataDir, env.StateDir, password, testInterval, deleteMode, "-q -Q 1")
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -201,7 +221,7 @@ func TestMultipleProofCycles(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -241,7 +261,7 @@ func TestStatePersistenceAcrossRestart(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 
 	// Start first app instance
 	app1, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
@@ -300,7 +320,7 @@ func TestStartupWithOverdueStateTriggersDeletion(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 	files := fshelpers.CreateTestFiles(t, env.DataDir, 4)
 	fshelpers.AssertFilesExist(t, files)
 
@@ -347,7 +367,7 @@ func TestAuthenticationSecurity(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -384,7 +404,7 @@ func TestHTMLFrontendLoads(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -423,7 +443,7 @@ func TestDryRunModePreventsDeletion(t *testing.T) {
 	defer cancel()
 
 	listenAddr := nextListenAddr(t)
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 
 	// Create a custom app instance with dry-run enabled
 	app, err := StartAppWithDryRun(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
@@ -468,7 +488,7 @@ func TestRobustnessConcurrentProofOfLifeRequests(t *testing.T) {
 	defer cancel()
 
 	listenAddr := nextListenAddr(t)
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -512,7 +532,7 @@ func TestRobustnessConcurrentProofOfLifeRequests(t *testing.T) {
 
 func TestRobustnessAuthenticationEdgeCases(t *testing.T) {
 	listenAddr := nextListenAddr(t)
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -568,7 +588,7 @@ func TestRobustnessAuthenticationEdgeCases(t *testing.T) {
 
 func TestRobustnessStateFileCorruptionRecovery(t *testing.T) {
 	listenAddr := nextListenAddr(t)
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 
 	t.Log("Writing corrupted state file...")
 	if err := os.WriteFile(filepath.Join(env.StateDir, "heartbeat_state.json"), []byte("{invalid json"), 0o600); err != nil {
@@ -590,7 +610,7 @@ func TestRobustnessHealthCheckResponsivenessUnderLoad(t *testing.T) {
 	defer cancel()
 
 	listenAddr := nextListenAddr(t)
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -673,7 +693,7 @@ func TestRobustnessPermissionRevocationMidOperation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -717,7 +737,7 @@ func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, fastDeletionInterval)
 	if err != nil {
@@ -768,7 +788,7 @@ func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
-	env := SetupTestEnv(t)
+	env := setupTestEnv(t)
 
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, fastDeletionInterval)
 	if err != nil {
