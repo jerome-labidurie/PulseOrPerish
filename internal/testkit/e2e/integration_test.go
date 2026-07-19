@@ -43,7 +43,7 @@ const (
 
 // TestEnv holds temporary directories for a test run.
 type TestEnv struct {
-	DataDir  string
+	DataDir  []string
 	StateDir string
 }
 
@@ -92,15 +92,21 @@ func nextListenAddr(t *testing.T) string {
 }
 
 // setupTestEnv creates isolated temporary directories for test data.
+// creates nb data-dirs
 // The returned cleanup function removes all temporary files when called.
-func setupTestEnv(t *testing.T) TestEnv {
+func setupTestEnv(t *testing.T, nb int) TestEnv {
 	t.Helper()
+	var dataDirs []string
 
-	dataDir := t.TempDir()
+	for range nb {
+		dataDir := t.TempDir()
+		dataDirs = append(dataDirs, dataDir)
+	}
+
 	stateDir := t.TempDir()
 
 	return TestEnv{
-		DataDir:  dataDir,
+		DataDir:  dataDirs,
 		StateDir: stateDir,
 	}
 }
@@ -112,7 +118,7 @@ func TestProofOfLifeRepousseDeadline(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -122,7 +128,7 @@ func TestProofOfLifeRepousseDeadline(t *testing.T) {
 	client := NewAppClient(t, listenAddr, password)
 
 	// Create test files
-	files := fshelpers.CreateTestFiles(t, env.DataDir, 3)
+	files := fshelpers.CreateTestFiles(t, env.DataDir[0], 3)
 	fshelpers.AssertFilesExist(t, files)
 
 	// Send proof of life
@@ -165,7 +171,7 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 	app, err := StartAppWithDeleteMethod(t, listenAddr, env.DataDir, env.StateDir, password, testInterval, deleteMode, "-q -Q 1")
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -184,7 +190,7 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	t.Logf("Proof sent: nextDeletion=%v", proofStatus["nextDeletion"])
 
 	// Create test files after the deadline is anchored
-	files := fshelpers.CreateTestFiles(t, env.DataDir, 5)
+	files := fshelpers.CreateTestFiles(t, env.DataDir[0], 5)
 	fshelpers.AssertFilesExist(t, files)
 	t.Logf("Created %d test files", len(files))
 
@@ -193,7 +199,7 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	// at most ~150s after the proof. maxDeletionWait adds a safety margin.
 	t.Logf("Waiting for deletion (interval=%v, maxWait=%v)...", testInterval, maxDeletionWait)
 	waitCtx, waitCancel := context.WithTimeout(ctx, maxDeletionWait+10*time.Second)
-	if err := WaitForDirEmpty(waitCtx, env.DataDir, maxDeletionWait); err != nil {
+	if err := WaitForDirEmpty(waitCtx, env.DataDir[0], maxDeletionWait); err != nil {
 		waitCancel()
 		t.Logf("App stdout: %s", app.Stdout())
 		if st, e := client.GetStatus(ctx); e == nil {
@@ -221,7 +227,7 @@ func TestMultipleProofCycles(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -234,7 +240,7 @@ func TestMultipleProofCycles(t *testing.T) {
 		t.Logf("Cycle %d: sending proof of life", cycle)
 
 		// Create files
-		files := fshelpers.CreateTestFiles(t, env.DataDir, 2)
+		files := fshelpers.CreateTestFiles(t, env.DataDir[0], 2)
 		fshelpers.AssertFilesExist(t, files)
 
 		// Send proof of life
@@ -261,7 +267,7 @@ func TestStatePersistenceAcrossRestart(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 
 	// Start first app instance
 	app1, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
@@ -320,8 +326,8 @@ func TestStartupWithOverdueStateTriggersDeletion(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := setupTestEnv(t)
-	files := fshelpers.CreateTestFiles(t, env.DataDir, 4)
+	env := setupTestEnv(t, 1)
+	files := fshelpers.CreateTestFiles(t, env.DataDir[0], 4)
 	fshelpers.AssertFilesExist(t, files)
 
 	overdueState := state.HeartbeatState{
@@ -353,10 +359,10 @@ func TestStartupWithOverdueStateTriggersDeletion(t *testing.T) {
 	}
 
 	t.Logf("Overdue state loaded, waiting for deletion on first monitor tick (interval=%v, maxWait=%v)", fastDeletionInterval, fastDeletionWait)
-	if err := WaitForDirEmpty(ctx, env.DataDir, fastDeletionWait); err != nil {
+	if err := WaitForDirEmpty(ctx, env.DataDir[0], fastDeletionWait); err != nil {
 		t.Fatalf("overdue startup state did not trigger deletion: %v\nstdout: %s", err, app.Stdout())
 	}
-	fshelpers.AssertDirIsEmpty(t, env.DataDir)
+	fshelpers.AssertDirIsEmpty(t, env.DataDir[0])
 	requireAppStillHealthy(t, listenAddr)
 	t.Log("PASS: overdue persisted state triggers deletion after startup")
 }
@@ -367,7 +373,7 @@ func TestAuthenticationSecurity(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -404,7 +410,7 @@ func TestHTMLFrontendLoads(t *testing.T) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -443,7 +449,7 @@ func TestDryRunModePreventsDeletion(t *testing.T) {
 	defer cancel()
 
 	listenAddr := nextListenAddr(t)
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 
 	// Create a custom app instance with dry-run enabled
 	app, err := StartAppWithDryRun(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
@@ -453,7 +459,7 @@ func TestDryRunModePreventsDeletion(t *testing.T) {
 	defer app.Stop()
 
 	// Create test files
-	files := fshelpers.CreateTestFiles(t, env.DataDir, 3)
+	files := fshelpers.CreateTestFiles(t, env.DataDir[0], 3)
 	fshelpers.AssertFilesExist(t, files)
 
 	client := NewAppClient(t, listenAddr, password)
@@ -488,7 +494,7 @@ func TestRobustnessConcurrentProofOfLifeRequests(t *testing.T) {
 	defer cancel()
 
 	listenAddr := nextListenAddr(t)
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -496,7 +502,7 @@ func TestRobustnessConcurrentProofOfLifeRequests(t *testing.T) {
 	defer app.Stop()
 
 	client := NewAppClient(t, listenAddr, password)
-	files := fshelpers.CreateTestFiles(t, env.DataDir, 5)
+	files := fshelpers.CreateTestFiles(t, env.DataDir[0], 5)
 	fshelpers.AssertFilesExist(t, files)
 
 	t.Log("Sending 40 concurrent proof-of-life requests (10 goroutines × 4 requests)...")
@@ -532,7 +538,7 @@ func TestRobustnessConcurrentProofOfLifeRequests(t *testing.T) {
 
 func TestRobustnessAuthenticationEdgeCases(t *testing.T) {
 	listenAddr := nextListenAddr(t)
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -588,7 +594,7 @@ func TestRobustnessAuthenticationEdgeCases(t *testing.T) {
 
 func TestRobustnessStateFileCorruptionRecovery(t *testing.T) {
 	listenAddr := nextListenAddr(t)
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 
 	t.Log("Writing corrupted state file...")
 	if err := os.WriteFile(filepath.Join(env.StateDir, "heartbeat_state.json"), []byte("{invalid json"), 0o600); err != nil {
@@ -610,7 +616,7 @@ func TestRobustnessHealthCheckResponsivenessUnderLoad(t *testing.T) {
 	defer cancel()
 
 	listenAddr := nextListenAddr(t)
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -693,7 +699,7 @@ func TestRobustnessPermissionRevocationMidOperation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, testInterval)
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -737,7 +743,8 @@ func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
+	dataDir := env.DataDir[0]
 
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, fastDeletionInterval)
 	if err != nil {
@@ -748,22 +755,22 @@ func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
 	outsideDir := t.TempDir()
 	outsideFile := fshelpers.CreateTestFile(t, outsideDir, "outside.txt")
 
-	innerDir := filepath.Join(env.DataDir, "nested")
+	innerDir := filepath.Join(dataDir, "nested")
 	if err := os.MkdirAll(innerDir, 0o755); err != nil {
 		t.Fatalf("failed to create inner dir: %v", err)
 	}
-	fshelpers.CreateTestFile(t, env.DataDir, "root.txt")
+	fshelpers.CreateTestFile(t, dataDir, "root.txt")
 	fshelpers.CreateTestFile(t, innerDir, "inner.txt")
 
-	if err := os.Symlink(outsideFile, filepath.Join(env.DataDir, "outside-file-link")); err != nil {
+	if err := os.Symlink(outsideFile, filepath.Join(dataDir, "outside-file-link")); err != nil {
 		t.Fatalf("failed to create file symlink: %v", err)
 	}
-	if err := os.Symlink(outsideDir, filepath.Join(env.DataDir, "outside-dir-link")); err != nil {
+	if err := os.Symlink(outsideDir, filepath.Join(dataDir, "outside-dir-link")); err != nil {
 		t.Fatalf("failed to create dir symlink: %v", err)
 	}
 
 	// Best-effort special file: a FIFO if supported.
-	_ = syscall.Mkfifo(filepath.Join(env.DataDir, "event.pipe"), 0o600)
+	_ = syscall.Mkfifo(filepath.Join(dataDir, "event.pipe"), 0o600)
 
 	t.Logf("Data dir prepared with symlinks, nested dir, and special file (interval=%v, maxWait=%v)", fastDeletionInterval, fastDeletionWait)
 
@@ -773,7 +780,7 @@ func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
 	}
 
 	t.Log("Waiting for deletion...")
-	if err := WaitForDirEmpty(ctx, env.DataDir, fastDeletionWait); err != nil {
+	if err := WaitForDirEmpty(ctx, dataDir, fastDeletionWait); err != nil {
 		t.Fatalf("data dir not cleared for symlink/special files: %v\nstdout: %s", err, app.Stdout())
 	}
 
@@ -788,7 +795,8 @@ func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
-	env := setupTestEnv(t)
+	env := setupTestEnv(t, 1)
+	dataDir := env.DataDir[0]
 
 	app, err := StartApp(t, listenAddr, env.DataDir, env.StateDir, password, fastDeletionInterval)
 	if err != nil {
@@ -796,7 +804,7 @@ func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
 	}
 	defer app.Stop()
 
-	nested := fshelpers.CreateNestedTestFiles(t, env.DataDir)
+	nested := fshelpers.CreateNestedTestFiles(t, dataDir)
 
 	t.Logf("Data dir prepared with %d nested files (interval=%v, maxWait=%v)", len(nested), fastDeletionInterval, fastDeletionWait)
 
@@ -806,10 +814,10 @@ func TestRobustnessDeletionWithNestedSubdirectories(t *testing.T) {
 	}
 
 	t.Log("Waiting for deletion of nested directory tree...")
-	if err := WaitForDirEmpty(ctx, env.DataDir, fastDeletionWait); err != nil {
+	if err := WaitForDirEmpty(ctx, dataDir, fastDeletionWait); err != nil {
 		t.Fatalf("nested directory content not deleted: %v\nstdout: %s", err, app.Stdout())
 	}
-	fshelpers.AssertDirIsEmpty(t, env.DataDir)
+	fshelpers.AssertDirIsEmpty(t, dataDir)
 	requireAppStillHealthy(t, listenAddr)
 	t.Log("PASS: nested directory tree fully deleted")
 }

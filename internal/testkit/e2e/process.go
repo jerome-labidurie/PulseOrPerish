@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -55,19 +56,19 @@ type AppProcess struct {
 
 // StartApp starts the PulseOrPerish application as a separate process.
 // It returns an error if the build or startup fails.
-func StartApp(t *testing.T, listenAddr, dataDir, stateDir, password string, interval time.Duration) (*AppProcess, error) {
+func StartApp(t *testing.T, listenAddr string, dataDir []string, stateDir string, password string, interval time.Duration) (*AppProcess, error) {
 	t.Helper()
 	return startAppWithOptions(t, listenAddr, dataDir, stateDir, password, interval, false, "", "")
 }
 
 // StartAppWithDryRun starts the application with the dry-run flag enabled.
-func StartAppWithDryRun(t *testing.T, listenAddr, dataDir, stateDir, password string, interval time.Duration) (*AppProcess, error) {
+func StartAppWithDryRun(t *testing.T, listenAddr string, dataDir []string, stateDir string, password string, interval time.Duration) (*AppProcess, error) {
 	t.Helper()
 	return startAppWithOptions(t, listenAddr, dataDir, stateDir, password, interval, true, "", "")
 }
 
 // StartAppWithDeleteMethod starts the application with an explicit delete method and optional wipe args.
-func StartAppWithDeleteMethod(t *testing.T, listenAddr, dataDir, stateDir, password string, interval time.Duration, deleteMethod, wipeArgs string) (*AppProcess, error) {
+func StartAppWithDeleteMethod(t *testing.T, listenAddr string, dataDir []string, stateDir string, password string, interval time.Duration, deleteMethod, wipeArgs string) (*AppProcess, error) {
 	t.Helper()
 	return startAppWithOptions(t, listenAddr, dataDir, stateDir, password, interval, false, deleteMethod, wipeArgs)
 }
@@ -115,7 +116,7 @@ func ensureBuiltBinary() (string, error) {
 }
 
 // startAppWithOptions starts the app process with optional dry-run mode.
-func startAppWithOptions(t *testing.T, listenAddr, dataDir, stateDir, password string, interval time.Duration, dryRun bool, deleteMethod, wipeArgs string) (*AppProcess, error) {
+func startAppWithOptions(t *testing.T, listenAddr string, dataDir []string, stateDir string, password string, interval time.Duration, dryRun bool, deleteMethod, wipeArgs string) (*AppProcess, error) {
 	t.Helper()
 
 	binaryPath, err := ensureBuiltBinary()
@@ -130,7 +131,7 @@ func startAppWithOptions(t *testing.T, listenAddr, dataDir, stateDir, password s
 	// Build the command
 	cmd := exec.Command(binaryPath,
 		"-listen", listenAddr,
-		"-data-dirs", dataDir,
+		"-data-dirs", strings.Join(dataDir, ","),
 		"-state-dir", stateDir,
 		"-password", password,
 		"-interval", interval.String(),
