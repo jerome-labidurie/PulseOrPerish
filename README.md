@@ -37,7 +37,7 @@ Priority: flags > environment variables > defaults.
 | Dry-run mode (no deletion) | `POP_DRY_RUN` | `--dry-run` | `false` | `true`, `false` |
 | Deletion method | `POP_DELETE_METHOD` | `--delete-method` | `rm` | `rm`, `wipe` |
 | Arguments for wipe | `POP_WIPE_ARGS` | `--wipe-args` | `-q -Q 1` | `-q -Q 3 -e` |
-| Directory to wipe on deadline | `POP_DATA_DIR` | `--data-dir` | *(required)* | `/data` (absolute path) |
+| Directories to wipe on deadline | `POP_DATA_DIRS` | `--data-dirs` | *(required)* | `/data`, `/photos,/medias/videos` |
 | Directory for state persistence | `POP_STATE_DIR` | `--state-dir` | `/state` | `/var/lib/pop/state` |
 | Log directory | `POP_LOG_PATH` | `--log-path` | (stdout only) | `/var/log/pop/` (directory; if set, a timestamped file is also created) |
 | Log level | `POP_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
@@ -56,7 +56,7 @@ See [homeassistant.md](./homeassistant.md) for a REST sensor and notifications a
 go run ./cmd/pulseorperish \
   --listen=':8086' \
   --password='mysecret' \
-  --data-dir="$(pwd)/demo-data" \
+  --data-dirs="$(pwd)/demo-data" \
   --state-dir="$(pwd)/demo-state" \
   --dry-run='true' \
   --log-level='debug' \
@@ -70,7 +70,7 @@ You can also use the [docker-compose](./docker-compose.yml) example
 ```bash
 docker run --rm -it -p 8086:8080 \
   -e POP_PASSWORD=mysecret \
-  -e POP_DATA_DIR=/data \
+  -e POP_DATA_DIRS=/data \
   -e POP_STATE_DIR=/state \
   -v $(pwd)/demo-data:/data \
   -v $(pwd)/demo-state:/state \

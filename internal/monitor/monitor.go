@@ -4,6 +4,7 @@ package monitor
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,7 +34,7 @@ type Service struct {
 	startedAt time.Time
 	interval  time.Duration
 	dryRun    bool
-	dataDir   string
+	dataDir   []string
 	tick      time.Duration
 
 	mu            sync.RWMutex
@@ -43,7 +44,7 @@ type Service struct {
 
 // NewService creates a Service. The evaluation tick is derived from interval
 // (interval/10, clamped between 1 minute and 24 hours).
-func NewService(log zerolog.Logger, st *state.Store, d delete.Deleter, interval time.Duration, dryRun bool, dataDir string) *Service {
+func NewService(log zerolog.Logger, st *state.Store, d delete.Deleter, interval time.Duration, dryRun bool, dataDir []string) *Service {
 	tick := interval / 10
 	if tick < time.Minute {
 		tick = time.Minute
@@ -158,14 +159,14 @@ func (s *Service) evaluate(ctx context.Context, now time.Time) {
 		return
 	}
 
-	s.log.Warn().Time("deadline", status.NextDeletion).Str("dataDir", s.dataDir).Msg("deadline exceeded, clearing directory")
+	s.log.Warn().Time("deadline", status.NextDeletion).Str("dataDir", strings.Join(s.dataDir, ",")).Msg("deadline exceeded, clearing directories")
 	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if err := s.deleter.ClearDirectory(cctx, s.dataDir); err != nil {
-		s.log.Error().Err(err).Str("dataDir", s.dataDir).Msg("directory clearing failed")
+	if err := s.deleter.ClearDirectories(cctx, s.dataDir); err != nil {
+		s.log.Error().Err(err).Str("dataDir", strings.Join(s.dataDir, ",")).Msg("directory clearing failed")
 		return
 	}
-	s.log.Warn().Str("dataDir", s.dataDir).Msg("directory content cleared")
+	s.log.Warn().Str("dataDir", strings.Join(s.dataDir, ",")).Msg("directory content cleared")
 }
 
 func (s *Service) deadlineFrom(last time.Time) time.Time {

@@ -35,7 +35,7 @@ type Config struct {
 	DryRun     bool
 	DeleteMode string
 	WipeArgs   string
-	DataDir    string
+	DataDirs   []string
 	StateDir   string
 	LogPath    string
 	LogLevel   string
@@ -74,6 +74,8 @@ func Load(args []string) (Config, error) {
 		return Config{}, err
 	}
 
+	dataDirs := strings.SplitN(strings.TrimSpace(*dataDir), ",", -1)
+
 	cfg = Config{
 		ListenAddr: strings.TrimSpace(*listen),
 		Password:   *password,
@@ -81,7 +83,7 @@ func Load(args []string) (Config, error) {
 		DryRun:     *dryRun,
 		DeleteMode: strings.ToLower(strings.TrimSpace(*deleteMode)),
 		WipeArgs:   strings.TrimSpace(*wipeArgs),
-		DataDir:    strings.TrimSpace(*dataDir),
+		DataDirs:   dataDirs,
 		StateDir:   strings.TrimSpace(*stateDir),
 		LogPath:    strings.TrimSpace(*logPath),
 		LogLevel:   strings.ToLower(strings.TrimSpace(*logLevel)),
@@ -101,14 +103,16 @@ func (c Config) Validate() error {
 	if c.Interval <= 0 {
 		return errors.New("interval must be > 0")
 	}
-	if c.DataDir == "" {
-		return errors.New("data-dir is required")
+	if len(c.DataDirs) == 0 {
+		return errors.New("data-dirs is required")
 	}
-	if !filepath.IsAbs(c.DataDir) {
-		return errors.New("data-dir must be an absolute path")
-	}
-	if filepath.Clean(c.DataDir) == "/" {
-		return errors.New("data-dir cannot be root path")
+	for _, dir := range c.DataDirs {
+		if !filepath.IsAbs(dir) {
+			return errors.New("data-dirs must be an absolute path")
+		}
+		if filepath.Clean(dir) == "/" {
+			return errors.New("data-dirs cannot be root path")
+		}
 	}
 	if c.StateDir == "" {
 		return errors.New("state-dir is required")

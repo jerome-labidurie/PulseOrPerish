@@ -19,6 +19,7 @@ type Deleter interface {
 	// It returns an error if the directory cannot be read, or ctx.Err() if the
 	// context is cancelled before all entries are processed.
 	ClearDirectory(ctx context.Context, dir string) error
+	ClearDirectories(ctx context.Context, dirs []string) error
 }
 
 // SafeDeleter is a Deleter that refuses to operate on dangerous paths such as
@@ -71,6 +72,15 @@ func (d *SafeDeleter) ClearDirectory(ctx context.Context, dir string) error {
 	}
 
 	return d.clearWithRm(ctx, files)
+}
+
+func (d *SafeDeleter) ClearDirectories(ctx context.Context, dirs []string) error {
+	for _, dir := range dirs {
+		if err := d.ClearDirectory(ctx, dir); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (d *SafeDeleter) clearWithRm(ctx context.Context, files []string) error {
