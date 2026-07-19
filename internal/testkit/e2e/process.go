@@ -130,7 +130,7 @@ func startAppWithOptions(t *testing.T, listenAddr, dataDir, stateDir, password s
 	// Build the command
 	cmd := exec.Command(binaryPath,
 		"-listen", listenAddr,
-		"-data-dir", dataDir,
+		"-data-dirs", dataDir,
 		"-state-dir", stateDir,
 		"-password", password,
 		"-interval", interval.String(),

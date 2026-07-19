@@ -10,7 +10,7 @@ services:
       POP_LISTEN: ":8080"
       POP_INTERVAL: "24h"
       POP_DRY_RUN: "false"
-      POP_DATA_DIR: "/data"
+      POP_DATA_DIRS: "/data"
       POP_STATE_DIR: "/state"
       POP_LOG_LEVEL: "info"
     volumes:
