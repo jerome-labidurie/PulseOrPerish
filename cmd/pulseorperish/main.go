@@ -75,11 +75,19 @@ func main() {
 		defer func() { _ = closer.Close() }()
 	}
 
-	resolvedDataDir, err := delete.ResolveSafeDir(cfg.DataDir)
-	if err != nil {
-		logger.Fatal().Err(err).Str("dataDir", cfg.DataDir).Msg("invalid data directory")
+	var safeDataDirs []string
+	for _, dir := range cfg.DataDirs {
+		resolvedDataDir, err := delete.ResolveSafeDir(dir)
+		if err != nil {
+			logger.Fatal().Err(err).Str("dataDir", dir).Str("resolvedTo", resolvedDataDir).Msg("invalid data directory")
+		}
+		// Validate write/delete permissions on dataDir
+		if err := validateDataDirPermissions(logger, resolvedDataDir); err != nil {
+			logger.Fatal().Err(err).Str("dataDir", dir).Str("resolvedTo", resolvedDataDir).Msg("insufficient permissions on data directory")
+		}
+		safeDataDirs = append(safeDataDirs, resolvedDataDir)
 	}
-	cfg.DataDir = resolvedDataDir
+	cfg.DataDirs = safeDataDirs
 
 	st := state.NewStore(cfg.StateDir)
 	if cfg.DeleteMode == "wipe" {
@@ -88,12 +96,7 @@ func main() {
 		}
 	}
 	del := delete.NewSafeDeleter(logger, cfg.DryRun, cfg.DeleteMode, cfg.WipeArgs, cfg.LogLevel)
-	mon := monitor.NewService(logger, st, del, cfg.Interval, cfg.DryRun, cfg.DataDir)
-
-	// Validate write/delete permissions on dataDir
-	if err := validateDataDirPermissions(logger, cfg.DataDir); err != nil {
-		logger.Fatal().Err(err).Str("dataDir", cfg.DataDir).Msg("insufficient permissions on data directory")
-	}
+	mon := monitor.NewService(logger, st, del, cfg.Interval, cfg.DryRun, cfg.DataDirs)
 
 	if err := mon.LoadInitialState(); err != nil {
 		logger.Fatal().Err(err).Msg("failed loading state")

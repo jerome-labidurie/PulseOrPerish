@@ -35,6 +35,22 @@ func TestRequiresPassword(t *testing.T) {
 	}
 }
 
+func TestMultiplesDataDirs(t *testing.T) {
+	t.Setenv("POP_PASSWORD", "pw")
+	t.Setenv("POP_DATA_DIRS", "/data1,/data2")
+
+	cfg, err := Load([]string{})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(cfg.DataDirs) != 2 {
+		t.Fatalf("expected 2 dirs, got %v", len(cfg.DataDirs))
+	}
+	if cfg.DataDirs[0] != "/data1" || cfg.DataDirs[1] != "/data2" {
+		t.Fatalf("didn't get expected data dirs, got %v", cfg.DataDirs)
+	}
+}
+
 func TestDryRunFromEnv(t *testing.T) {
 	t.Setenv("POP_PASSWORD", "pw")
 	t.Setenv("POP_DATA_DIRS", "/data")
@@ -135,7 +151,7 @@ func TestConfigRedactedMasksPassword(t *testing.T) {
 	cfg := Config{
 		ListenAddr: ":8080",
 		Password:   "super-secret",
-		DataDir:    "/data",
+		DataDirs:   []string{"/data"},
 		StateDir:   "/state",
 		LogLevel:   "info",
 	}
@@ -148,7 +164,7 @@ func TestConfigRedactedMasksPassword(t *testing.T) {
 	if cfg.Password != "super-secret" {
 		t.Fatalf("expected original config to remain unchanged, got %q", cfg.Password)
 	}
-	if redacted.ListenAddr != cfg.ListenAddr || redacted.DataDir != cfg.DataDir || redacted.StateDir != cfg.StateDir || redacted.LogLevel != cfg.LogLevel {
+	if redacted.ListenAddr != cfg.ListenAddr || redacted.DataDirs[0] != cfg.DataDirs[0] || redacted.StateDir != cfg.StateDir || redacted.LogLevel != cfg.LogLevel {
 		t.Fatal("expected non-secret fields to be preserved")
 	}
 }
