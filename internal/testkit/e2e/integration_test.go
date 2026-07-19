@@ -171,7 +171,7 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
-	env := setupTestEnv(t, 1)
+	env := setupTestEnv(t, 2)
 	app, err := StartAppWithDeleteMethod(t, listenAddr, env.DataDir, env.StateDir, password, testInterval, deleteMode, "-q -Q 1")
 	if err != nil {
 		t.Fatalf("failed to start app: %v", err)
@@ -190,16 +190,20 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	t.Logf("Proof sent: nextDeletion=%v", proofStatus["nextDeletion"])
 
 	// Create test files after the deadline is anchored
-	files := fshelpers.CreateTestFiles(t, env.DataDir[0], 5)
+	var files []string
+	for _, dir := range env.DataDir {
+		f := fshelpers.CreateTestFiles(t, dir, 5)
+		files = append(files, f...)
+	}
 	fshelpers.AssertFilesExist(t, files)
-	t.Logf("Created %d test files", len(files))
+	t.Logf("Created %d test files in %d dirs", len(files), len(env.DataDir))
 
 	// Wait for deletion.
 	// With testInterval=90s and a 1-minute minimum tick, deletion happens
 	// at most ~150s after the proof. maxDeletionWait adds a safety margin.
 	t.Logf("Waiting for deletion (interval=%v, maxWait=%v)...", testInterval, maxDeletionWait)
 	waitCtx, waitCancel := context.WithTimeout(ctx, maxDeletionWait+10*time.Second)
-	if err := WaitForDirEmpty(waitCtx, env.DataDir[0], maxDeletionWait); err != nil {
+	if err := WaitForDirEmpty(waitCtx, env.DataDir[1], maxDeletionWait); err != nil {
 		waitCancel()
 		t.Logf("App stdout: %s", app.Stdout())
 		if st, e := client.GetStatus(ctx); e == nil {
