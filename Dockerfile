@@ -5,14 +5,15 @@ COPY go.mod go.sum ./
 # hadolint ignore=DL3008
 RUN go mod download; \
     apt-get update; \
-    apt-get install -y --no-install-recommends git wipe
+    apt-get install -y --no-install-recommends git wipe libsodium23 libsodium-dev
 COPY . .
 
 ARG VERSION=dev
 
 RUN BUILD_DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ') && \
     COMMIT=$(git rev-parse --short HEAD) && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o /out/pulseorperish ./cmd/pulseorperish
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o /out/pulseorperish ./cmd/pulseorperish && \
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o /out/popcrypt ./cmd/popcrypt
 
 # no tag for distroless
 # hadolint ignore=DL3006
@@ -20,9 +21,11 @@ FROM gcr.io/distroless/static-debian13 AS runner
 
 WORKDIR /
 COPY --from=builder /out/pulseorperish /pulseorperish
+COPY --from=builder /out/popcrypt /popcrypt
 COPY --from=builder /usr/bin/wipe /usr/bin/wipe
 COPY --from=builder /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so.6
 COPY --from=builder /lib64/ld-linux-x86-64.so.2 /lib64/ld-linux-x86-64.so.2
+COPY --from=builder /lib/x86_64-linux-gnu/libsodium.so.23 /lib/x86_64-linux-gnu/libsodium.so.23
 
 EXPOSE 8080
 
