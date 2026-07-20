@@ -114,6 +114,7 @@ func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 	}
 	defer reader.Close()
 
+	// TODO: check fileout does not exists before trunc it !!
 	writer, err := os.Create(fileout)
 	if err != nil {
 		return err
