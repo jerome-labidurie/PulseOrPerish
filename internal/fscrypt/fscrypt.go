@@ -25,6 +25,10 @@ type FsCrypt struct {
 	Password string // pwd for [en|de]crypt
 }
 
+func (fc FsCrypt) pwdToKey(pwd string) [32]byte {
+	return sha256.Sum256([]byte(pwd))
+}
+
 // addToArchive adds a file to the given tar.Writer.
 // It preserves permissions but uses the provided filename in the archive header.
 func (fc FsCrypt) addToArchive(tw *tar.Writer, filename string) error {
@@ -62,7 +66,7 @@ func (fc FsCrypt) addToArchive(tw *tar.Writer, filename string) error {
 // It uses goroutines to handle the tar/zip compression stream and libsodium encryption simultaneously.
 func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 	var xzw io.WriteCloser
-	writer, err := os.Create(fileout)
+	writer, err := os.Create(fileout) // erase fileout if exists
 	if err != nil {
 		return err
 	}
@@ -95,7 +99,7 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 		pwriter.Close()
 	}()
 
-	key := sha256.Sum256([]byte(fc.Password))
+	key := fc.pwdToKey(fc.Password)
 	nacl.Init()
 	go func() {
 		defer wg.Done()
@@ -105,6 +109,7 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 		}
 	}()
 	wg.Wait()
+	log.Info().Str("fname", fileout).Msg("Encrypted archive")
 	return nil
 }
 
@@ -116,21 +121,19 @@ func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 	}
 	defer reader.Close()
 
-	// TODO: check fileout does not exists before trunc it !!
-	writer, err := os.Create(fileout)
+	writer, err := os.OpenFile(fileout, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666) // do NOT erase fileout
 	if err != nil {
 		return err
 	}
 	defer writer.Close()
 
-	log.Debug().Str("in", filein).Str("out", fileout).Msg("Decrypt")
-
-	key := sha256.Sum256([]byte(fc.Password))
+	key := fc.pwdToKey(fc.Password)
 	nacl.Init()
 	err = nacl.StreamDecrypt(key[:], reader, writer)
 	if err != nil {
 		return err
 	}
+	log.Info().Str("out", fileout).Str("in", filein).Msg("Decrypted archive")
 	return nil
 }
 

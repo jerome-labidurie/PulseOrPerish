@@ -31,7 +31,7 @@ func WalkDirectory(root string) ([]string, error) {
 		if !d.Type().IsRegular() {
 			return nil // Skip directories and symlinks etc.
 		}
-		files = append(files, "./"+path)
+		files = append(files, path)
 		return nil
 	})
 	if err != nil {
