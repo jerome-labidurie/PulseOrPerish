@@ -31,8 +31,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Build binary
+      - name: Build pulseorperish binary
         run: go build -ldflags="-X main.Version=dev" ./cmd/pulseorperish
+
+      - name: Build popcrypt binary
+        run: go build -ldflags="-X main.Version=dev" ./cmd/popcrypt
 
       - name: Run unit tests (excluding e2e)
         shell: bash
