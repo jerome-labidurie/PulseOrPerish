@@ -47,7 +47,7 @@ func NewSafeDeleter(log zerolog.Logger, dryRun bool, deleteMode, wipeArgs, logLe
 	}
 }
 
-// ClearDirectory deletes all entries directly inside dir.
+// ClearDirectory deletes all entries directly inside a dataDir.
 // It returns an error if dir resolves to a dangerous path (empty, ".", or "/"),
 // or if the directory listing fails. Individual entry removal errors are logged
 // but do not abort the iteration. Returns ctx.Err() if the context is cancelled.
@@ -61,6 +61,7 @@ func (d *SafeDeleter) ClearDirectory(ctx context.Context, dir string) error {
 
 	entries, err := os.ReadDir(clean)
 	if err != nil {
+		// TODO: if error, still delete already returned entries ?
 		return fmt.Errorf("read directory %q: %w", clean, err)
 	}
 	for _, e := range entries {
@@ -74,6 +75,7 @@ func (d *SafeDeleter) ClearDirectory(ctx context.Context, dir string) error {
 	return d.clearWithRm(ctx, files)
 }
 
+// deletes content of multiples dataDirs
 func (d *SafeDeleter) ClearDirectories(ctx context.Context, dirs []string) error {
 	for _, dir := range dirs {
 		if err := d.ClearDirectory(ctx, dir); err != nil {
@@ -83,6 +85,7 @@ func (d *SafeDeleter) ClearDirectories(ctx context.Context, dirs []string) error
 	return nil
 }
 
+// rm files & dirs from files[]
 func (d *SafeDeleter) clearWithRm(ctx context.Context, files []string) error {
 	return d.clearTargets(ctx, files, func(target string) {
 		if err := os.RemoveAll(target); err != nil {
@@ -93,6 +96,7 @@ func (d *SafeDeleter) clearWithRm(ctx context.Context, files []string) error {
 	})
 }
 
+// wipe files & dirs from files[]
 func (d *SafeDeleter) clearWithWipe(ctx context.Context, files []string) error {
 	return d.clearTargets(ctx, files, func(target string) {
 		args := buildWipeArgs(d.wipeArgs, d.logLevel, target)
@@ -105,6 +109,7 @@ func (d *SafeDeleter) clearWithWipe(ctx context.Context, files []string) error {
 	})
 }
 
+// calls clearFn on each file entry from  files[]
 func (d *SafeDeleter) clearTargets(ctx context.Context, files []string, clearFn func(target string)) error {
 	for _, target := range files {
 		select {

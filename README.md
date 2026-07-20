@@ -5,7 +5,7 @@
 [![Latest release](https://img.shields.io/github/v/release/jerome-labidurie/PulseOrPerish)](https://github.com/jerome-labidurie/PulseOrPerish/releases/latest)
 [![Docker image](https://img.shields.io/badge/ghcr.io-pulseorperish-blue?logo=docker)](https://github.com/jerome-labidurie/PulseOrPerish/pkgs/container/pulseorperish)
 
-Dead man switch in Go.
+Dead man switch that deletes your precious data.
 
 Protect what matters with a simple heartbeat: as long as you are alive, your data stays safe; if you stop checking in, **PulseOrPerish** automatically wipes the target directories. Lightweight, self-hosted, and ready in minutes with a web UI, API, and container support.
 
@@ -37,7 +37,7 @@ Priority: flags > environment variables > defaults.
 | Dry-run mode (no deletion) | `POP_DRY_RUN` | `--dry-run` | `false` | `true`, `false` |
 | Deletion method | `POP_DELETE_METHOD` | `--delete-method` | `rm` | `rm`, `wipe` |
 | Arguments for wipe | `POP_WIPE_ARGS` | `--wipe-args` | `-q -Q 1` | `-q -Q 3 -e` |
-| Directories to wipe on deadline | `POP_DATA_DIRS` | `--data-dirs` | *(required)* | `/data`, `/photos,/medias/videos` |
+| Directories to wipe on deadline | `POP_DATA_DIRS` | `--data-dirs` | *(required)* | `/data`, `/photos,/media/videos` |
 | Directory for state persistence | `POP_STATE_DIR` | `--state-dir` | `/state` | `/var/lib/pop/state` |
 | Log directory | `POP_LOG_PATH` | `--log-path` | (stdout only) | `/var/log/pop/` (directory; if set, a timestamped file is also created) |
 | Log level | `POP_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
