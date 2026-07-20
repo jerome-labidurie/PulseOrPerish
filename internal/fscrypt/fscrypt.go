@@ -11,10 +11,11 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/rs/zerolog/log"
 
 	nacl "github.com/nathants/go-libsodium"
 )
@@ -38,6 +39,7 @@ func (fc FsCrypt) addToArchive(tw *tar.Writer, filename string) error {
 		return err
 	}
 
+	log.Debug().Str("fname", filename).Msg("Add file to tar")
 	header, err := tar.FileInfoHeader(info, info.Name())
 	if err != nil {
 		return err
@@ -81,7 +83,7 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 		for _, filename := range filesin {
 			err := fc.addToArchive(tw, filename)
 			if err != nil {
-				log.Println(err)
+				log.Error().Err(err)
 				continue
 			}
 		}
@@ -99,7 +101,7 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 		defer wg.Done()
 		err := nacl.StreamEncrypt(key[:], preader, writer)
 		if err != nil {
-			panic(err)
+			log.Error().Err(err)
 		}
 	}()
 	wg.Wait()
@@ -120,6 +122,8 @@ func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 		return err
 	}
 	defer writer.Close()
+
+	log.Debug().Str("in", filein).Str("out", fileout).Msg("Decrypt")
 
 	key := sha256.Sum256([]byte(fc.Password))
 	nacl.Init()
