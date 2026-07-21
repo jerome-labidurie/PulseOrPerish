@@ -25,6 +25,8 @@ const (
 	defaultWipeArgs   = "-q -Q 1"
 )
 
+var validDeleteModes = []string{"rm", "wipe"}
+
 var sizedNumberPattern = regexp.MustCompile(`^\d+([KMG])?$`)
 
 // Config holds the resolved runtime configuration for PulseOrPerish.
@@ -89,6 +91,8 @@ func Load(args []string) (Config, error) {
 		LogLevel:   strings.ToLower(strings.TrimSpace(*logLevel)),
 	}
 
+	// fmt.Printf("conf: %d, %v, '%s'\n", len(cfg.DataDirs), cfg, cfg.DataDirs[0])
+
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -101,14 +105,14 @@ func (c Config) Validate() error {
 		return errors.New("password is required")
 	}
 	if c.Interval <= 0 {
-		return errors.New("interval must be > 0")
+		return errors.New("interval must be > 0 " + c.Interval.String())
 	}
-	if len(c.DataDirs) == 0 {
+	if len(c.DataDirs) == 1 && c.DataDirs[0] == "" {
 		return errors.New("data-dirs is required")
 	}
 	for _, dir := range c.DataDirs {
 		if !filepath.IsAbs(dir) {
-			return errors.New("data-dirs must be an absolute path")
+			return errors.New("data-dirs must be an absolute path " + dir)
 		}
 		if filepath.Clean(dir) == "/" {
 			return errors.New("data-dirs cannot be root path")
@@ -118,9 +122,8 @@ func (c Config) Validate() error {
 		return errors.New("state-dir is required")
 	}
 	if !filepath.IsAbs(c.StateDir) {
-		return errors.New("state-dir must be an absolute path")
+		return errors.New("state-dir must be an absolute path " + c.StateDir)
 	}
-	validDeleteModes := []string{"rm", "wipe"}
 	validDeleteMode := false
 	for _, mode := range validDeleteModes {
 		if c.DeleteMode == mode {
