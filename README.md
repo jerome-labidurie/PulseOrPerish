@@ -55,7 +55,7 @@ Priority: flags > environment variables > defaults.
 * `file:/data/password_in_file` get the password from a file (if file is stored in a data-dir, it will also be encrypted)
 * `random` create a random password when needed, (**data will not be recoverable**)
 
-The encryption is based on [libsodium](https://libsodium.gitbook.io/doc) and uses the [ChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305) symetric algorithm. A companion tool is provided for encryption/decryption, see [popcrypt](./cmd/popcrypt/).
+The encryption is based on [libsodium](https://libsodium.gitbook.io/doc) and uses the [XChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305) symetric algorithm. A companion tool is provided for encryption/decryption, see [popcrypt](./cmd/popcrypt/).
 
 ## Home Assistant
 See [homeassistant.md](./homeassistant.md) for a REST sensor and notifications automation example.

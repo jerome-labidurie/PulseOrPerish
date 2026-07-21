@@ -43,6 +43,34 @@ func WalkDirectory(root string) ([]string, error) {
 	return files, nil
 }
 
+// usage prints the help message with detailed explanations of encryption/decryption behavior.
+func usage() {
+	fmt.Fprintf(os.Stderr, `PoPCrypt - File (En|De)cryption Tool
+
+USAGE:
+  popcrypt [flags] -p xxx -e|--encrypt <path>...    Encrypt file(s) or directory(ies)
+  popcrypt [flags] -p xxx -d|--decrypt <file.pop>   Decrypt an encrypted archive
+
+ENCRYPTION:
+  Files are archived with tar, compressed (gzip or lzw), then encrypted
+  with XChaCha20-Poly1305. Output filename: file_NNNN.tar.{gz|lzw}.pop
+
+  Example:
+    popcrypt -e -p "mypassword" /path/to/dir1 /path/to/dir2
+    → Produces: file_0000.tar.gz.pop, file_0001.tar.gz.pop
+
+DECRYPTION:
+  Decrypts the archive to a tar stream (still compressed).
+  Output is NOT automatically decompressed. To extract:
+    popcrypt -d -p "mypassword" file_0000.tar.gz.pop
+    → Produces: file_0000.tar.gz
+    → Then extract with: tar -xvzf file_0000.tar.gz
+
+FLAGS:
+`)
+	flag.PrintDefaults()
+}
+
 func main() {
 	var decrypt bool
 	var encrypt bool
@@ -59,6 +87,7 @@ func main() {
 	version := flag.Bool("version", false, "Display version")
 	debug := flag.Bool("debug", false, "Set log level to debug")
 
+	flag.Usage = usage
 	flag.Parse()
 
 	// set logger
@@ -70,7 +99,7 @@ func main() {
 	}
 
 	if *help {
-		flag.Usage()
+		usage()
 		os.Exit(0)
 	}
 
@@ -80,23 +109,23 @@ func main() {
 	}
 
 	if passwordStr == "" {
-		flag.Usage()
+		usage()
 		log.Fatal().Msg("password is required")
 	}
 	if encrypt && decrypt {
-		flag.Usage()
+		usage()
 		log.Fatal().Msg("Cannot encrypt and decrypt")
 	}
 	if encrypt && len(flag.Args()) < 1 {
-		flag.Usage()
+		usage()
 		log.Fatal().Msg("-encrypt needs files")
 	}
 	if decrypt && len(flag.Args()) != 1 {
-		flag.Usage()
+		usage()
 		log.Fatal().Msg("-decrypt needs one file only")
 	}
 	if *compressor != "gz" && *compressor != "lzw" {
-		flag.Usage()
+		usage()
 		log.Fatal().Msg("Only gz & lzw supported")
 	}
 	// log.Printf("%v\n", flag.Args())
