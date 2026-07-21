@@ -33,11 +33,17 @@ const (
 
 type FsCrypt struct {
 	Compress string // compression algo
-	Password string // pwd for [en|de]crypt
+	Password []byte // pwd for [en|de]crypt
+}
+
+// Clear zeroes the password bytes in memory.
+// Call it (e.g. via defer) once encryption/decryption is done.
+func (fc *FsCrypt) Clear() {
+	clear(fc.Password)
 }
 
 func (fc FsCrypt) pwdToKey(salt []byte) []byte {
-	return argon2.IDKey([]byte(fc.Password), salt, argon2Time, argon2Memory, argon2Threads, keySize)
+	return argon2.IDKey(fc.Password, salt, argon2Time, argon2Memory, argon2Threads, keySize)
 }
 
 // addToArchive adds a file to the given tar.Writer.
@@ -73,6 +79,10 @@ func (fc FsCrypt) addToArchive(tw *tar.Writer, filename string) error {
 	return nil
 }
 
+func (fc FsCrypt) Init() {
+	libsodium.Init()
+}
+
 // encryptFiles creates an encrypted and compressed archive from a list of files.
 // It uses goroutines to handle the tar/zip compression stream and libsodium encryption simultaneously.
 func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
@@ -93,7 +103,6 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 		return fmt.Errorf("failed to write salt: %w", err)
 	}
 	key := fc.pwdToKey(salt)
-	libsodium.Init()
 
 	preader, pwriter := io.Pipe()
 	var (
@@ -182,5 +191,5 @@ func (fc FsCrypt) GetCryptedFileName(idx int) string {
 }
 
 func (fc FsCrypt) GetPlainFileName(fname string) string {
-	return strings.Trim(fname, "."+fileExtension)
+	return strings.TrimSuffix(fname, "."+fileExtension)
 }

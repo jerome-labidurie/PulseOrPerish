@@ -38,7 +38,7 @@ func WalkDirectory(root string) ([]string, error) {
 		return files, fmt.Errorf("error walking directory: %w", err)
 	}
 
-	log.Debug().Str("found", strings.Join(files, ","))
+	log.Debug().Str("files", strings.Join(files, ",")).Msg("Files found in directory")
 
 	return files, nil
 }
@@ -46,11 +46,11 @@ func WalkDirectory(root string) ([]string, error) {
 func main() {
 	var decrypt bool
 	var encrypt bool
-	var password string
+	var passwordStr string
 
 	help := flag.Bool("help", false, "Display help")
-	flag.StringVar(&password, "password", "", "Password to encrypt/decrypt")
-	flag.StringVar(&password, "p", "", "Alias for -password")
+	flag.StringVar(&passwordStr, "password", "", "Password to encrypt/decrypt")
+	flag.StringVar(&passwordStr, "p", "", "Alias for -password")
 	flag.BoolVar(&decrypt, "decrypt", false, "Decrypt a file")
 	flag.BoolVar(&decrypt, "d", false, "Alias for -decrypt")
 	flag.BoolVar(&encrypt, "encrypt", false, "Encrypt files")
@@ -79,7 +79,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if password == "" {
+	if passwordStr == "" {
 		flag.Usage()
 		log.Fatal().Msg("password is required")
 	}
@@ -102,9 +102,11 @@ func main() {
 	// log.Printf("%v\n", flag.Args())
 
 	fc := fscrypt.FsCrypt{
-		Password: password,
+		Password: []byte(passwordStr),
 		Compress: *compressor,
 	}
+	defer fc.Clear()
+	fc.Init()
 
 	if encrypt {
 		for i, file := range flag.Args() {
