@@ -7,7 +7,7 @@ require (
 	github.com/rs/zerolog v1.35.1
 )
 
-require golang.org/x/crypto v0.53.0 // indirect
+require golang.org/x/crypto v0.53.0
 
 require (
 	github.com/mattn/go-colorable v0.1.14 // indirect

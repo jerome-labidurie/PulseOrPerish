@@ -8,7 +8,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"compress/lzw"
-	"crypto/sha256"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"os"
@@ -16,12 +16,18 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog/log"
+	"golang.org/x/crypto/argon2"
 
 	"github.com/nathants/go-libsodium"
 )
 
 const (
 	fileExtension string = "pop" // encrypted file extension
+	saltSize             = 16    // argon2 salt size in bytes
+	argon2Time    uint32 = 3
+	argon2Memory  uint32 = 64 * 1024 // 64 MiB
+	argon2Threads uint8  = 4
+	keySize       uint32 = 32
 )
 
 type FsCrypt struct {
@@ -29,9 +35,8 @@ type FsCrypt struct {
 	Password string // pwd for [en|de]crypt
 }
 
-func (fc FsCrypt) pwdToKey(pwd string) [32]byte {
-	//TODO: don't we need a nonce ?
-	return sha256.Sum256([]byte(pwd))
+func (fc FsCrypt) pwdToKey(salt []byte) []byte {
+	return argon2.IDKey([]byte(fc.Password), salt, argon2Time, argon2Memory, argon2Threads, keySize)
 }
 
 // addToArchive adds a file to the given tar.Writer.
@@ -104,11 +109,18 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 		pwriter.Close()
 	}()
 
-	key := fc.pwdToKey(fc.Password)
+	salt := make([]byte, saltSize)
+	if _, err := rand.Read(salt); err != nil {
+		return fmt.Errorf("failed to generate salt: %w", err)
+	}
+	if _, err := writer.Write(salt); err != nil {
+		return fmt.Errorf("failed to write salt: %w", err)
+	}
+	key := fc.pwdToKey(salt)
 	libsodium.Init()
 	go func() {
 		defer wg.Done()
-		err := libsodium.StreamEncrypt(key[:], preader, writer)
+		err := libsodium.StreamEncrypt(key, preader, writer)
 		if err != nil {
 			log.Error().Err(err)
 		}
@@ -132,9 +144,13 @@ func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 	}
 	defer writer.Close()
 
-	key := fc.pwdToKey(fc.Password)
+	salt := make([]byte, saltSize)
+	if _, err := io.ReadFull(reader, salt); err != nil {
+		return fmt.Errorf("failed to read salt: %w", err)
+	}
+	key := fc.pwdToKey(salt)
 	libsodium.Init()
-	err = libsodium.StreamDecrypt(key[:], reader, writer)
+	err = libsodium.StreamDecrypt(key, reader, writer)
 	if err != nil {
 		return err
 	}
