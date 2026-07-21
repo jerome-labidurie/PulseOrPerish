@@ -33,12 +33,13 @@ Priority: flags > environment variables > defaults.
 | Description | Env variable | Flag | Default | Values / Example |
 |---|---|---|---|---|
 | Authentication password | `POP_PASSWORD` | `--password` | *(required)* | `mysecret` |
-| Interval between proofs | `POP_INTERVAL` | `--interval` | `720h` | `24h`, `720h` ([format](https://pkg.go.dev/time#ParseDuration)) |
+| Max interval between proofs | `POP_INTERVAL` | `--interval` | `720h` | `24h`, `720h` ([format](https://pkg.go.dev/time#ParseDuration)) |
 | Dry-run mode (no deletion) | `POP_DRY_RUN` | `--dry-run` | `false` | `true`, `false` |
-| Deletion method | `POP_DELETE_METHOD` | `--delete-method` | `rm` | `rm`, `wipe` |
-| Arguments for wipe | `POP_WIPE_ARGS` | `--wipe-args` | `-q -Q 1` | `-q -Q 3 -e` |
+| Deletion method | `POP_DELETE_METHOD` | `--delete-method` | `rm` | `rm`, `wipe`, `crypt/rm`, `crypt/wipe` |
 | Directories to wipe on deadline | `POP_DATA_DIRS` | `--data-dirs` | *(required)* | `/data`, `/photos,/media/videos` |
 | Directory for state persistence | `POP_STATE_DIR` | `--state-dir` | `/state` | `/var/lib/pop/state` |
+| Arguments for wipe | `POP_WIPE_ARGS` | `--wipe-args` | `-q -Q 1` | `-q -Q 3 -e` ([details](https://linux.die.net/man/1/wipe)) |
+| Encrypt password | `POP_CRYPT_PASSWORD` | `--crypt-password` | (same as `POP_PASSWORD`) | See below |
 | Log directory | `POP_LOG_PATH` | `--log-path` | (stdout only) | `/var/log/pop/` (directory; if set, a timestamped file is also created) |
 | Log level | `POP_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
 | HTTP listen address | `POP_LISTEN` | `--listen` | `:8080` | `:8086`, `0.0.0.0:8080` |
@@ -47,6 +48,14 @@ Priority: flags > environment variables > defaults.
 **`rm`** (default): uses Go's [`os.RemoveAll`](https://pkg.go.dev/os#RemoveAll); no external dependency.
 
 **`wipe`**: invokes the [`wipe`](https://wipe.sourceforge.net/) utility to securely overwrite data before deletion. Defaults options (See `POP_WIPE_ARGS`) are *not very secure*. Execution can be **very** long.
+
+**`crypt/rm`**, **`crypt/wipe`** encrypt the data before deleting the original with `rm` or `wipe` methods. So the data can be recovered later (assuming the password is known). Use `POP_CRYPT_PASSWORD` to provide it :
+* if not provided, uses the value from `POP_PASSWORD`
+* `mySecretPassword` directly provides a password
+* `file:/data/password_in_file` get the password from a file (if file is stored in a data-dir, it will also be encrypted)
+* `random` create a random password when needed, (**data will not be recoverable**)
+
+The encryption is based on [libsodium](https://libsodium.gitbook.io/doc) and uses the [ChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305) symetric algorithm. A companion tool is provided for encryption/decryption, see [popcrypt](./cmd/popcrypt/).
 
 ## Home Assistant
 See [homeassistant.md](./homeassistant.md) for a REST sensor and notifications automation example.

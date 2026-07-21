@@ -55,7 +55,7 @@ func main() {
 	flag.BoolVar(&decrypt, "d", false, "Alias for -decrypt")
 	flag.BoolVar(&encrypt, "encrypt", false, "Encrypt files")
 	flag.BoolVar(&encrypt, "e", false, "Alias for -encrypt")
-	compressor := flag.String("comp", "gz", "Compression to use gz|lzw")
+	compressor := flag.String("comp", "gz", "Compression to use: gz|lzw")
 	version := flag.Bool("version", false, "Display version")
 	debug := flag.Bool("debug", false, "Set log level to debug")
 

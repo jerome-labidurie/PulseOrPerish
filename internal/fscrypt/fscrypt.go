@@ -17,7 +17,11 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	nacl "github.com/nathants/go-libsodium"
+	"github.com/nathants/go-libsodium"
+)
+
+const (
+	fileExtension string = "pop" // encrypted file extension
 )
 
 type FsCrypt struct {
@@ -26,6 +30,7 @@ type FsCrypt struct {
 }
 
 func (fc FsCrypt) pwdToKey(pwd string) [32]byte {
+	//TODO: don't we need a nonce ?
 	return sha256.Sum256([]byte(pwd))
 }
 
@@ -100,10 +105,10 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 	}()
 
 	key := fc.pwdToKey(fc.Password)
-	nacl.Init()
+	libsodium.Init()
 	go func() {
 		defer wg.Done()
-		err := nacl.StreamEncrypt(key[:], preader, writer)
+		err := libsodium.StreamEncrypt(key[:], preader, writer)
 		if err != nil {
 			log.Error().Err(err)
 		}
@@ -113,7 +118,7 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 	return nil
 }
 
-// decryptFile decrypts a .nacl file back into an uncyphered tar stream.
+// decryptFile decrypts a encrypted file back into an uncyphered tar stream.
 func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 	reader, err := os.Open(filein)
 	if err != nil {
@@ -128,8 +133,8 @@ func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 	defer writer.Close()
 
 	key := fc.pwdToKey(fc.Password)
-	nacl.Init()
-	err = nacl.StreamDecrypt(key[:], reader, writer)
+	libsodium.Init()
+	err = libsodium.StreamDecrypt(key[:], reader, writer)
 	if err != nil {
 		return err
 	}
@@ -138,9 +143,9 @@ func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 }
 
 func (fc FsCrypt) GetCryptedFileName(idx int) string {
-	return fmt.Sprintf("file_%04d.tar.%s.nacl", idx, fc.Compress)
+	return fmt.Sprintf("file_%04d.tar.%s.%s", idx, fc.Compress, fileExtension)
 }
 
 func (fc FsCrypt) GetPlainFileName(fname string) string {
-	return strings.Trim(fname, ".nacl")
+	return strings.Trim(fname, "."+fileExtension)
 }
