@@ -9,6 +9,7 @@ import (
 	"compress/gzip"
 	"compress/lzw"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -82,8 +83,24 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 	}
 	defer writer.Close()
 
+	// Generate salt and derive key before starting goroutines to avoid a
+	// goroutine leak if these early steps fail.
+	salt := make([]byte, saltSize)
+	if _, err := rand.Read(salt); err != nil {
+		return fmt.Errorf("failed to generate salt: %w", err)
+	}
+	if _, err := writer.Write(salt); err != nil {
+		return fmt.Errorf("failed to write salt: %w", err)
+	}
+	key := fc.pwdToKey(salt)
+	libsodium.Init()
+
 	preader, pwriter := io.Pipe()
-	var wg sync.WaitGroup
+	var (
+		wg         sync.WaitGroup
+		tarErr     error
+		encryptErr error
+	)
 	wg.Add(2)
 
 	go func() {
@@ -95,37 +112,39 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 		}
 		tw := tar.NewWriter(xzw)
 		for _, filename := range filesin {
-			err := fc.addToArchive(tw, filename)
-			if err != nil {
-				log.Error().Err(err)
+			if err := fc.addToArchive(tw, filename); err != nil {
+				log.Error().Err(err).Str("file", filename).Msg("failed to add file to archive")
 				continue
 			}
 		}
 		// closing the Writers must follow the data flow, starting from the source
 		// if using the defer call, make sure follow the FILO rule
-		tw.Close()
-		xzw.Close()
+		if err := tw.Close(); err != nil {
+			tarErr = fmt.Errorf("failed to close tar writer: %w", err)
+			pwriter.CloseWithError(tarErr)
+			return
+		}
+		if err := xzw.Close(); err != nil {
+			tarErr = fmt.Errorf("failed to close compressor: %w", err)
+			pwriter.CloseWithError(tarErr)
+			return
+		}
 		// pwriter has to be closed in a goroutine, or the program will lock
 		pwriter.Close()
 	}()
 
-	salt := make([]byte, saltSize)
-	if _, err := rand.Read(salt); err != nil {
-		return fmt.Errorf("failed to generate salt: %w", err)
-	}
-	if _, err := writer.Write(salt); err != nil {
-		return fmt.Errorf("failed to write salt: %w", err)
-	}
-	key := fc.pwdToKey(salt)
-	libsodium.Init()
 	go func() {
 		defer wg.Done()
-		err := libsodium.StreamEncrypt(key, preader, writer)
-		if err != nil {
-			log.Error().Err(err)
+		if err := libsodium.StreamEncrypt(key, preader, writer); err != nil {
+			encryptErr = err
+			log.Error().Err(err).Msg("stream encryption failed")
 		}
 	}()
+
 	wg.Wait()
+	if err := errors.Join(tarErr, encryptErr); err != nil {
+		return err
+	}
 	log.Info().Str("fname", fileout).Msg("Encrypted archive")
 	return nil
 }
