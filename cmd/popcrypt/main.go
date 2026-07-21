@@ -105,20 +105,37 @@ func main() {
 		Password: []byte(passwordStr),
 		Compress: *compressor,
 	}
-	defer fc.Clear()
+
+	var hasError bool
+	defer func() {
+		fc.Clear()
+		if hasError {
+			os.Exit(1)
+		}
+	}()
 	fc.Init()
 
 	if encrypt {
 		for i, file := range flag.Args() {
-			filesin, _ := WalkDirectory(file)
-			log.Printf("encrypt %d: %d files %v", i, len(filesin), filesin)
-			fc.EncryptFiles(filesin, fc.GetCryptedFileName(i))
+			filesin, err := WalkDirectory(file)
+			if err != nil {
+				log.Error().Err(err).Str("fname", file).Msg("failed to walk directory")
+				hasError = true
+				continue
+			}
+			log.Info().Int("index", i).Int("file_count", len(filesin)).Strs("files", filesin).Msg("Encrypting files")
+			if err := fc.EncryptFiles(filesin, fc.GetCryptedFileName(i)); err != nil {
+				log.Error().Err(err).Msg("encryption failed")
+				hasError = true
+				continue
+			}
 		}
 	}
 
 	if decrypt {
 		if err := fc.DecryptFile(flag.Args()[0], fc.GetPlainFileName(flag.Args()[0])); err != nil {
-			log.Fatal().Msg(err.Error())
+			log.Error().Err(err).Msg("decryption failed")
+			hasError = true
 		}
 	}
 }

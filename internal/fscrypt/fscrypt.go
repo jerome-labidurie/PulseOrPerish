@@ -36,12 +36,19 @@ type FsCrypt struct {
 	Password []byte // pwd for [en|de]crypt
 }
 
+// Init initializes the libsodium library.
+// It must be called before any other libsodium functions.
+func (fc FsCrypt) Init() {
+	libsodium.Init()
+}
+
 // Clear zeroes the password bytes in memory.
 // Call it (e.g. via defer) once encryption/decryption is done.
 func (fc *FsCrypt) Clear() {
 	clear(fc.Password)
 }
 
+// KDF: pwdToKey derives a key from the password and salt using Argon2id.
 func (fc FsCrypt) pwdToKey(salt []byte) []byte {
 	return argon2.IDKey(fc.Password, salt, argon2Time, argon2Memory, argon2Threads, keySize)
 }
@@ -77,10 +84,6 @@ func (fc FsCrypt) addToArchive(tw *tar.Writer, filename string) error {
 		return err
 	}
 	return nil
-}
-
-func (fc FsCrypt) Init() {
-	libsodium.Init()
 }
 
 // encryptFiles creates an encrypted and compressed archive from a list of files.
