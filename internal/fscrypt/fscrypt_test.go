@@ -1,8 +1,16 @@
 package fscrypt
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
+	"compress/lzw"
+	"io"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"pulseorperish/internal/testkit/fshelpers"
 )
 
 func TestPwdToKey_Length(t *testing.T) {
@@ -53,5 +61,247 @@ func TestPwdToKey_EmptyPassword(t *testing.T) {
 	key := fc.pwdToKey(salt)
 	if len(key) != int(keySize) {
 		t.Errorf("expected key length %d, got %d", keySize, len(key))
+	}
+}
+
+// Clear
+func TestClear(t *testing.T) {
+	pwd := []byte("password1234")
+	fc := FsCrypt{Password: pwd}
+	fc.Clear()
+	for i, b := range fc.Password {
+		if b != 0 {
+			t.Errorf("byte %d not zeroed after Clear(): got 0x%02x", i, b)
+		}
+	}
+}
+
+// Test GetCryptedFileName
+func TestGetCryptedFileName(t *testing.T) {
+	tests := []struct {
+		compress string
+		idx      int
+		want     string
+	}{
+		{"gz", 0, "file_0000.tar.gz." + fileExtension},
+		{"gz", 42, "file_0042.tar.gz." + fileExtension},
+		{"lzw", 1, "file_0001.tar.lzw." + fileExtension},
+		{"gz", 6969, "file_6969.tar.gz." + fileExtension},
+	}
+	for _, tc := range tests {
+		fc := FsCrypt{Compress: tc.compress}
+		got := fc.GetCryptedFileName(tc.idx)
+		if got != tc.want {
+			t.Errorf("GetCryptedFileName(%d) with %s = %q, want %q", tc.idx, tc.compress, got, tc.want)
+		}
+	}
+}
+
+// Test GetPlainFileName
+func TestGetPlainFileName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"file_0000.tar.gz." + fileExtension, "file_0000.tar.gz"},
+		{"file_0001.tar.lzw." + fileExtension, "file_0001.tar.lzw"},
+		{"file." + fileExtension, "file"},
+		{"file_no_extension", "file_no_extension"}, // no .pop suffix — unchanged
+	}
+	fc := FsCrypt{}
+	for _, tc := range tests {
+		got := fc.GetPlainFileName(tc.input)
+		if got != tc.want {
+			t.Errorf("GetPlainFileName(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+// --- Error cases ---
+
+func TestEncryptFiles_NonExistentInput(t *testing.T) {
+	tmpDir := t.TempDir()
+	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
+	fc.Init()
+
+	// A non-existent file is logged and skipped; the archive is still created.
+	outFile := filepath.Join(tmpDir, fc.GetCryptedFileName(0))
+	err := fc.EncryptFiles([]string{"/nonexistent/file.txt"}, outFile)
+	if err != nil {
+		t.Errorf("expected nil error (non-existent file is skipped), got %v", err)
+	}
+	fshelpers.AssertFilesExist(t, []string{outFile})
+}
+
+func TestDecryptFile_NonExistentInput(t *testing.T) {
+	tmpDir := t.TempDir()
+	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
+	fc.Init()
+
+	err := fc.DecryptFile("/nonexistent/file."+fileExtension, filepath.Join(tmpDir, "out.tar.gz"))
+	if err == nil {
+		t.Error("expected error for non-existent input file, got nil")
+	}
+}
+
+func TestDecryptFile_ExistingOutput(t *testing.T) {
+	tmpDir := t.TempDir()
+	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
+	fc.Init()
+
+	// Create a dummy input file (just needs to exist for the open call).
+	inFile := fshelpers.CreateTestFile(t, tmpDir, "dummy."+fileExtension)
+
+	// Pre-create the output file — DecryptFile uses O_EXCL and should refuse.
+	outFile := fshelpers.CreateTestFile(t, tmpDir, "already_exists.tar.gz")
+
+	err := fc.DecryptFile(inFile, outFile)
+	if err == nil {
+		t.Error("expected error when output file already exists (O_EXCL), got nil")
+	}
+}
+
+func TestDecryptFile_TruncatedFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
+	fc.Init()
+
+	// Write fewer bytes than saltSize — ReadFull should fail.
+	inFile := filepath.Join(tmpDir, "truncated."+fileExtension)
+	os.WriteFile(inFile, []byte{0x01, 0x02}, 0644)
+
+	outFile := filepath.Join(tmpDir, "out.tar.gz")
+	err := fc.DecryptFile(inFile, outFile)
+	if err == nil {
+		t.Error("expected error reading salt from truncated file, got nil")
+	}
+}
+
+// --- Round-trip tests (slow: ~300ms each due to argon2id) ---
+
+// encryptDecryptRoundTrip is a helper that:
+//  1. Creates a temp file with the given content
+//  2. Encrypts it with the given compressor
+//  3. Decrypts the archive back
+//  4. Returns the decrypted file path and a cleanup function
+func encryptDecryptRoundTrip(t *testing.T, compress, content string) (decryptedPath string) {
+	t.Helper()
+	tmpDir := t.TempDir()
+
+	// Create source file
+	srcFile := filepath.Join(tmpDir, "source.txt")
+	if err := os.WriteFile(srcFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to create source file: %v", err)
+	}
+
+	fc := FsCrypt{Password: []byte("password1234"), Compress: compress}
+	fc.Init()
+
+	// Encrypt
+	encFile := filepath.Join(tmpDir, fc.GetCryptedFileName(0))
+	if err := fc.EncryptFiles([]string{srcFile}, encFile); err != nil {
+		t.Fatalf("EncryptFiles failed: %v", err)
+	}
+	fshelpers.AssertFilesExist(t, []string{encFile})
+
+	// Decrypt
+	decFile := filepath.Join(tmpDir, fc.GetPlainFileName(fc.GetCryptedFileName(0)))
+	if err := fc.DecryptFile(encFile, decFile); err != nil {
+		t.Fatalf("DecryptFile failed: %v", err)
+	}
+	fshelpers.AssertFilesExist(t, []string{decFile})
+
+	return decFile
+}
+
+// readFirstTarEntry opens an encrypted archive, decompresses it using the
+// provided decompress function, and returns the name and content of the first
+// tar entry. The decompress function must return an io.ReadCloser wrapping the
+// given io.Reader (e.g. gzip.NewReader or lzw.NewReader).
+func readFirstTarEntry(t *testing.T, archivePath string, decompress func(io.Reader) (io.ReadCloser, error)) (name, content string) {
+	t.Helper()
+	f, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatalf("failed to open decrypted archive: %v", err)
+	}
+	defer f.Close()
+
+	dc, err := decompress(f)
+	if err != nil {
+		t.Fatalf("failed to create decompressor: %v", err)
+	}
+	defer dc.Close()
+
+	tr := tar.NewReader(dc)
+	hdr, err := tr.Next()
+	if err != nil {
+		t.Fatalf("failed to read tar header: %v", err)
+	}
+	data, err := io.ReadAll(tr)
+	if err != nil {
+		t.Fatalf("failed to read tar entry content: %v", err)
+	}
+	return hdr.Name, string(data)
+}
+
+// TestEncryptDecrypt_RoundTrip verifies the full encryption/decryption pipeline
+// for each supported compressor (gz, lzw). It encrypts a source file, decrypts
+// the resulting archive, decompresses the tar stream, and checks that the
+// original file content and name are preserved end-to-end.
+func TestEncryptDecrypt_RoundTrip(t *testing.T) {
+	tests := []struct {
+		compress   string
+		decompress func(io.Reader) (io.ReadCloser, error)
+	}{
+		{
+			compress: "gz",
+			decompress: func(r io.Reader) (io.ReadCloser, error) {
+				return gzip.NewReader(r)
+			},
+		},
+		{
+			compress: "lzw",
+			decompress: func(r io.Reader) (io.ReadCloser, error) {
+				return lzw.NewReader(r, lzw.LSB, 8), nil
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.compress, func(t *testing.T) {
+			wantContent := "hello, " + tc.compress + " world!"
+			decFile := encryptDecryptRoundTrip(t, tc.compress, wantContent)
+
+			name, gotContent := readFirstTarEntry(t, decFile, tc.decompress)
+			if gotContent != wantContent {
+				t.Errorf("content mismatch: got %q, want %q", gotContent, wantContent)
+			}
+			if filepath.Base(name) != "source.txt" {
+				t.Errorf("unexpected tar entry name: %q", name)
+			}
+		})
+	}
+}
+
+func TestEncryptDecrypt_WrongPassword(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	srcFile := fshelpers.CreateTestFile(t, tmpDir, "source.txt")
+
+	fcEnc := FsCrypt{Password: []byte("correct-password"), Compress: "gz"}
+	fcEnc.Init()
+
+	encFile := filepath.Join(tmpDir, fcEnc.GetCryptedFileName(0))
+	if err := fcEnc.EncryptFiles([]string{srcFile}, encFile); err != nil {
+		t.Fatalf("EncryptFiles failed: %v", err)
+	}
+
+	fcDec := FsCrypt{Password: []byte("wrong-password"), Compress: "gz"}
+	fcDec.Init()
+
+	decFile := filepath.Join(tmpDir, fcEnc.GetPlainFileName(fcEnc.GetCryptedFileName(0)))
+	err := fcDec.DecryptFile(encFile, decFile)
+	if err == nil {
+		t.Error("expected decryption to fail with wrong password, got nil error")
 	}
 }
