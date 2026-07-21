@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	fileExtension string = "pop" // encrypted file extension
+	FileExtension string = "pop" // encrypted file extension
 	saltSize             = 16    // argon2 salt size in bytes
 	argon2Time    uint32 = 3
 	argon2Memory  uint32 = 64 * 1024 // 64 MiB
@@ -96,12 +96,12 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 	}
 	defer writer.Close()
 
-	// Generate salt and derive key before starting goroutines to avoid a
-	// goroutine leak if these early steps fail.
+	// Generate salt and derive key
 	salt := make([]byte, saltSize)
 	if _, err := rand.Read(salt); err != nil {
 		return fmt.Errorf("failed to generate salt: %w", err)
 	}
+	// write salt at the beginning of the file
 	if _, err := writer.Write(salt); err != nil {
 		return fmt.Errorf("failed to write salt: %w", err)
 	}
@@ -175,12 +175,14 @@ func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 	}
 	defer writer.Close()
 
+	// read salt from the beginning of the file
 	salt := make([]byte, saltSize)
 	if _, err := io.ReadFull(reader, salt); err != nil {
 		return fmt.Errorf("failed to read salt: %w", err)
 	}
 	key := fc.pwdToKey(salt)
-	libsodium.Init()
+
+	// decrypt rest of the file
 	err = libsodium.StreamDecrypt(key, reader, writer)
 	if err != nil {
 		return err
@@ -190,9 +192,9 @@ func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 }
 
 func (fc FsCrypt) GetCryptedFileName(idx int) string {
-	return fmt.Sprintf("file_%04d.tar.%s.%s", idx, fc.Compress, fileExtension)
+	return fmt.Sprintf("file_%04d.tar.%s.%s", idx, fc.Compress, FileExtension)
 }
 
 func (fc FsCrypt) GetPlainFileName(fname string) string {
-	return strings.TrimSuffix(fname, "."+fileExtension)
+	return strings.TrimSuffix(fname, "."+FileExtension)
 }

@@ -49,25 +49,26 @@ func usage() {
 
 USAGE:
   popcrypt [flags] -p xxx -e|--encrypt <path>...    Encrypt file(s) or directory(ies)
-  popcrypt [flags] -p xxx -d|--decrypt <file.pop>   Decrypt an encrypted archive
+  popcrypt [flags] -p xxx -d|--decrypt <file.%s>   Decrypt an encrypted archive
 
 ENCRYPTION:
   Files are archived with tar, compressed (gzip or lzw), then encrypted
-  with XChaCha20-Poly1305. Output filename: file_NNNN.tar.{gz|lzw}.pop
+  with XChaCha20-Poly1305. Output filename: file_NNNN.tar.{gz|lzw}.%s
 
   Example:
     popcrypt -e -p "mypassword" /path/to/dir1 /path/to/dir2
-    → Produces: file_0000.tar.gz.pop, file_0001.tar.gz.pop
+    → Produces: file_0000.tar.gz.%s, file_0001.tar.gz.%s
 
 DECRYPTION:
   Decrypts the archive to a tar stream (still compressed).
   Output is NOT automatically decompressed. To extract:
-    popcrypt -d -p "mypassword" file_0000.tar.gz.pop
+    popcrypt -d -p "mypassword" file_0000.tar.gz.%s
     → Produces: file_0000.tar.gz
     → Then extract with: tar -xvzf file_0000.tar.gz
+	(for lzw, use uncompress then tar -xvf)
 
 FLAGS:
-`)
+`, fscrypt.FileExtension, fscrypt.FileExtension, fscrypt.FileExtension, fscrypt.FileExtension, fscrypt.FileExtension)
 	flag.PrintDefaults()
 }
 

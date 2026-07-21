@@ -83,10 +83,10 @@ func TestGetCryptedFileName(t *testing.T) {
 		idx      int
 		want     string
 	}{
-		{"gz", 0, "file_0000.tar.gz." + fileExtension},
-		{"gz", 42, "file_0042.tar.gz." + fileExtension},
-		{"lzw", 1, "file_0001.tar.lzw." + fileExtension},
-		{"gz", 6969, "file_6969.tar.gz." + fileExtension},
+		{"gz", 0, "file_0000.tar.gz." + FileExtension},
+		{"gz", 42, "file_0042.tar.gz." + FileExtension},
+		{"lzw", 1, "file_0001.tar.lzw." + FileExtension},
+		{"gz", 6969, "file_6969.tar.gz." + FileExtension},
 	}
 	for _, tc := range tests {
 		fc := FsCrypt{Compress: tc.compress}
@@ -103,9 +103,9 @@ func TestGetPlainFileName(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"file_0000.tar.gz." + fileExtension, "file_0000.tar.gz"},
-		{"file_0001.tar.lzw." + fileExtension, "file_0001.tar.lzw"},
-		{"file." + fileExtension, "file"},
+		{"file_0000.tar.gz." + FileExtension, "file_0000.tar.gz"},
+		{"file_0001.tar.lzw." + FileExtension, "file_0001.tar.lzw"},
+		{"file." + FileExtension, "file"},
 		{"file_no_extension", "file_no_extension"}, // no .pop suffix — unchanged
 	}
 	fc := FsCrypt{}
@@ -138,7 +138,7 @@ func TestDecryptFile_NonExistentInput(t *testing.T) {
 	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
 	fc.Init()
 
-	err := fc.DecryptFile("/nonexistent/file."+fileExtension, filepath.Join(tmpDir, "out.tar.gz"))
+	err := fc.DecryptFile("/nonexistent/file."+FileExtension, filepath.Join(tmpDir, "out.tar.gz"))
 	if err == nil {
 		t.Error("expected error for non-existent input file, got nil")
 	}
@@ -150,7 +150,7 @@ func TestDecryptFile_ExistingOutput(t *testing.T) {
 	fc.Init()
 
 	// Create a dummy input file (just needs to exist for the open call).
-	inFile := fshelpers.CreateTestFile(t, tmpDir, "dummy."+fileExtension)
+	inFile := fshelpers.CreateTestFile(t, tmpDir, "dummy."+FileExtension)
 
 	// Pre-create the output file — DecryptFile uses O_EXCL and should refuse.
 	outFile := fshelpers.CreateTestFile(t, tmpDir, "already_exists.tar.gz")
@@ -167,7 +167,7 @@ func TestDecryptFile_TruncatedFile(t *testing.T) {
 	fc.Init()
 
 	// Write fewer bytes than saltSize — ReadFull should fail.
-	inFile := filepath.Join(tmpDir, "truncated."+fileExtension)
+	inFile := filepath.Join(tmpDir, "truncated."+FileExtension)
 	os.WriteFile(inFile, []byte{0x01, 0x02}, 0644)
 
 	outFile := filepath.Join(tmpDir, "out.tar.gz")
