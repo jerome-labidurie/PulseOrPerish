@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/lzw"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -125,29 +126,61 @@ func TestGetPlainFileName(t *testing.T) {
 
 // --- Error cases ---
 
-func TestEncryptFiles_NonExistentInput(t *testing.T) {
+func TestEncryptPaths_NonExistentInput(t *testing.T) {
 	tmpDir := t.TempDir()
 	fc := testFsCrypt([]byte("pass"), "gz")
 	fc.Init()
 
-	// A non-existent file is logged and skipped; the archive is still created.
 	outFile := filepath.Join(tmpDir, fc.GetCryptedFileName(0))
-	err := fc.EncryptFiles([]string{"/nonexistent/file.txt"}, outFile)
-	if err != nil {
-		t.Errorf("expected nil error (non-existent file is skipped), got %v", err)
+	err := fc.EncryptPaths([]string{"/nonexistent/file.txt"}, outFile)
+	if err == nil {
+		t.Fatal("expected error for non-existent input root, got nil")
+	}
+	if _, statErr := os.Stat(outFile); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no archive for missing input, got err=%v", statErr)
+	}
+}
+
+func TestEncryptPaths_EmptyInput(t *testing.T) {
+	tmpDir := t.TempDir()
+	fc := testFsCrypt([]byte("pass"), "gz")
+	fc.Init()
+
+	outFile := filepath.Join(tmpDir, fc.GetCryptedFileName(0))
+	err := fc.EncryptPaths([]string{}, outFile)
+	if !errors.Is(err, ErrNoFilesToEncrypt) {
+		t.Fatalf("expected ErrNoFilesToEncrypt, got %v", err)
+	}
+}
+
+func TestEncryptPaths_DirectoryInput(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "source")
+	if err := os.MkdirAll(filepath.Join(sourceDir, "nested"), 0o755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+	_ = fshelpers.CreateTestFile(t, sourceDir, "root.txt")
+	_ = fshelpers.CreateTestFile(t, filepath.Join(sourceDir, "nested"), "child.txt")
+
+	fc := testFsCrypt([]byte("pass"), "gz")
+	fc.Init()
+
+	outFile := filepath.Join(tmpDir, fc.GetCryptedFileName(0))
+	if err := fc.EncryptPaths([]string{sourceDir}, outFile); err != nil {
+		t.Fatalf("expected directory input to be accepted, got %v", err)
 	}
 	fshelpers.AssertFilesExist(t, []string{outFile})
 }
 
-func TestEncryptFiles_EmptyInput(t *testing.T) {
+func TestEncryptPaths_EmptyDirectoryInput(t *testing.T) {
 	tmpDir := t.TempDir()
 	fc := testFsCrypt([]byte("pass"), "gz")
 	fc.Init()
 
 	outFile := filepath.Join(tmpDir, fc.GetCryptedFileName(0))
-	err := fc.EncryptFiles([]string{}, outFile)
-	if err == nil {
-		t.Error("expected error for empty file list, got nil")
+	err := fc.EncryptPaths([]string{tmpDir}, outFile)
+	if !errors.Is(err, ErrNoFilesToEncrypt) {
+		t.Fatalf("expected ErrNoFilesToEncrypt for empty directory, got %v", err)
 	}
 }
 
@@ -217,8 +250,8 @@ func encryptDecryptRoundTrip(t *testing.T, compress, content string) (decryptedP
 
 	// Encrypt
 	encFile := filepath.Join(tmpDir, fc.GetCryptedFileName(0))
-	if err := fc.EncryptFiles([]string{srcFile}, encFile); err != nil {
-		t.Fatalf("EncryptFiles failed: %v", err)
+	if err := fc.EncryptPaths([]string{srcFile}, encFile); err != nil {
+		t.Fatalf("EncryptPaths failed: %v", err)
 	}
 	fshelpers.AssertFilesExist(t, []string{encFile})
 
@@ -310,8 +343,8 @@ func TestEncryptDecrypt_WrongPassword(t *testing.T) {
 	fcEnc.Init()
 
 	encFile := filepath.Join(tmpDir, fcEnc.GetCryptedFileName(0))
-	if err := fcEnc.EncryptFiles([]string{srcFile}, encFile); err != nil {
-		t.Fatalf("EncryptFiles failed: %v", err)
+	if err := fcEnc.EncryptPaths([]string{srcFile}, encFile); err != nil {
+		t.Fatalf("EncryptPaths failed: %v", err)
 	}
 
 	fcDec := testFsCrypt([]byte("wrong-password"), "gz")

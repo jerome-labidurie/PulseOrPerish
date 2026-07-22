@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"pulseorperish/internal/fscrypt"
 	"pulseorperish/internal/testkit/fshelpers"
 
 	"github.com/rs/zerolog"
@@ -24,18 +26,44 @@ type fakeCrypter struct {
 	outputs []string
 }
 
-func (f *fakeCrypter) EncryptFiles(filesin []string, fileout string) error {
-	cloned := append([]string(nil), filesin...)
+func (f *fakeCrypter) EncryptPaths(filesin []string, fileout string) error {
+	regularFiles, err := collectTestRegularFiles(filesin)
+	if err != nil {
+		return err
+	}
+	if len(regularFiles) == 0 {
+		return fscrypt.ErrNoFilesToEncrypt
+	}
+	cloned := append([]string(nil), regularFiles...)
 	f.inputs = append(f.inputs, cloned)
 	f.outputs = append(f.outputs, fileout)
 	if f.err != nil {
 		return f.err
 	}
-	return os.WriteFile(fileout, []byte(strings.Join(filesin, "\n")), 0o600)
+	return os.WriteFile(fileout, []byte(strings.Join(regularFiles, "\n")), 0o600)
 }
 
 func (f *fakeCrypter) GetCryptedFileName(idx int) string {
 	return fmt.Sprintf("file_%04d.tar.gz.pop", idx)
+}
+
+func collectTestRegularFiles(roots []string) ([]string, error) {
+	var files []string
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.Type().IsRegular() {
+				files = append(files, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return files, nil
 }
 
 func TestWipeBinaryAvailableInTestEnvironment(t *testing.T) {

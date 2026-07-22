@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +26,7 @@ type Deleter interface {
 
 // Crypter creates encrypted archives for top-level entries before deletion.
 type Crypter interface {
-	EncryptFiles(filesin []string, fileout string) error
+	EncryptPaths(filesin []string, fileout string) error
 	GetCryptedFileName(idx int) string
 }
 
@@ -133,18 +132,12 @@ func (d *SafeDeleter) clearWithCrypt(ctx context.Context, dataDir string, files 
 			continue
 		}
 
-		filesToEncrypt, err := collectRegularFiles(target)
-		if err != nil {
-			d.log.Error().Err(err).Str("path", target).Msg("failed collecting files for encryption")
-			continue
-		}
-		if len(filesToEncrypt) == 0 {
-			d.log.Debug().Str("path", target).Msg("deleting empty entry without encryption")
-			d.deleteTarget(ctx, target)
-			continue
-		}
-
-		if err := d.crypter.EncryptFiles(filesToEncrypt, archivePath); err != nil {
+		if err := d.crypter.EncryptPaths([]string{target}, archivePath); err != nil {
+			if errors.Is(err, fscrypt.ErrNoFilesToEncrypt) {
+				d.log.Debug().Str("path", target).Msg("deleting empty entry without encryption")
+				d.deleteTarget(ctx, target)
+				continue
+			}
 			d.log.Error().Err(err).Str("path", target).Str("archive", archivePath).Msg("failed encrypting entry")
 			continue
 		}
@@ -228,23 +221,6 @@ func (d *SafeDeleter) nextArchivePath(dataDir string, startIdx int) (string, int
 		}
 		return "", 0, fmt.Errorf("stat archive path %q: %w", archivePath, err)
 	}
-}
-
-func collectRegularFiles(root string) ([]string, error) {
-	var files []string
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.Type().IsRegular() {
-			files = append(files, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return files, nil
 }
 
 func isManagedArchiveEntry(name string) bool {

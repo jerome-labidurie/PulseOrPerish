@@ -3,12 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"pulseorperish/internal/fscrypt"
 	"pulseorperish/internal/logx"
-	"strings"
 
 	"github.com/rs/zerolog/log"
 )
@@ -19,29 +16,6 @@ var (
 	BuildDate  = "unknown"
 	CommitHash = "unknown"
 )
-
-// WalkDirectory recursively traverses a directory and returns the list of regular files.
-func WalkDirectory(root string) ([]string, error) {
-	var files []string
-
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || path == "" {
-			return err
-		}
-		if !d.Type().IsRegular() {
-			return nil // Skip directories and symlinks etc.
-		}
-		files = append(files, path)
-		return nil
-	})
-	if err != nil {
-		return files, fmt.Errorf("error walking directory: %w", err)
-	}
-
-	log.Debug().Str("files", strings.Join(files, ",")).Msg("Files found in directory")
-
-	return files, nil
-}
 
 // usage prints the help message with detailed explanations of encryption/decryption behavior.
 func usage() {
@@ -150,14 +124,8 @@ func main() {
 
 	if encrypt {
 		for i, file := range flag.Args() {
-			filesin, err := WalkDirectory(file)
-			if err != nil {
-				log.Error().Err(err).Str("fname", file).Msg("failed to walk directory")
-				hasError = true
-				continue
-			}
-			log.Info().Int("index", i).Int("file_count", len(filesin)).Strs("files", filesin).Msg("Encrypting files")
-			if err := fc.EncryptFiles(filesin, fc.GetCryptedFileName(i)); err != nil {
+			log.Info().Int("index", i).Str("input", file).Msg("Encrypting input")
+			if err := fc.EncryptPaths([]string{file}, fc.GetCryptedFileName(i)); err != nil {
 				log.Error().Err(err).Msg("encryption failed")
 				hasError = true
 				continue

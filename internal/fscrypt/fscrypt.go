@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -21,6 +23,8 @@ import (
 
 	"github.com/nathants/go-libsodium"
 )
+
+var ErrNoFilesToEncrypt = errors.New("no files to encrypt")
 
 const (
 	FileExtension string = "pop" // encrypted file extension
@@ -87,12 +91,17 @@ func (fc FsCrypt) addToArchive(tw *tar.Writer, filename string) error {
 	return nil
 }
 
-// encryptFiles creates an encrypted and compressed archive from a list of files.
-// It uses goroutines to handle the tar/zip compression stream and libsodium encryption simultaneously.
-func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
+// EncryptPaths creates an encrypted and compressed archive from a list of input
+// paths. Each input path may be a regular file or a directory, in which case
+// regular files are collected recursively.
+func (fc FsCrypt) EncryptPaths(filesin []string, fileout string) error {
+	regularFiles, err := collectRegularFiles(filesin)
+	if err != nil {
+		return err
+	}
 	// Validate input
-	if len(filesin) == 0 {
-		return fmt.Errorf("no files to encrypt")
+	if len(regularFiles) == 0 {
+		return ErrNoFilesToEncrypt
 	}
 
 	var xzw io.WriteCloser
@@ -129,7 +138,7 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 			xzw = gzip.NewWriter(pwriter)
 		}
 		tw := tar.NewWriter(xzw)
-		for _, filename := range filesin {
+		for _, filename := range regularFiles {
 			if err := fc.addToArchive(tw, filename); err != nil {
 				fc.Logger.Error().Err(err).Str("file", filename).Msg("failed to add file to archive")
 				continue
@@ -165,6 +174,25 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 	}
 	fc.Logger.Info().Str("fname", fileout).Msg("Encrypted archive")
 	return nil
+}
+
+func collectRegularFiles(roots []string) ([]string, error) {
+	var files []string
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.Type().IsRegular() {
+				files = append(files, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("walk input %q: %w", root, err)
+		}
+	}
+	return files, nil
 }
 
 // decryptFile decrypts a encrypted file back into an uncyphered tar stream.

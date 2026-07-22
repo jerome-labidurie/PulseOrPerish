@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"pulseorperish/internal/fscrypt"
 	"pulseorperish/internal/state"
 	"pulseorperish/internal/testkit/fshelpers"
 )
@@ -282,7 +283,7 @@ func testDeadlineTriggersCryptDeletion(t *testing.T, deleteMode string) {
 			t.Fatalf("expected %d archive entries in %s, got %d", expectedArchives[dir], dir, len(entries))
 		}
 		for _, entry := range entries {
-			if !strings.HasPrefix(entry.Name(), "file_") || !strings.HasSuffix(entry.Name(), ".pop") {
+			if !strings.HasPrefix(entry.Name(), "file_") || !strings.HasSuffix(entry.Name(), fscrypt.FileExtension) {
 				t.Fatalf("expected only managed archives in %s, found %s", dir, entry.Name())
 			}
 		}
