@@ -4,10 +4,13 @@ package delete
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"pulseorperish/internal/fscrypt"
 	"strings"
 
 	"github.com/rs/zerolog"
@@ -22,6 +25,12 @@ type Deleter interface {
 	ClearDirectories(ctx context.Context, dirs []string) error
 }
 
+// Crypter creates encrypted archives for top-level entries before deletion.
+type Crypter interface {
+	EncryptFiles(filesin []string, fileout string) error
+	GetCryptedFileName(idx int) string
+}
+
 // SafeDeleter is a Deleter that refuses to operate on dangerous paths such as
 // the filesystem root, and supports a dry-run mode that only logs intended
 // deletions without actually removing anything.
@@ -31,6 +40,7 @@ type SafeDeleter struct {
 	deleteMode string
 	wipeArgs   string
 	logLevel   string
+	crypter    Crypter
 	runner     func(context.Context, string, ...string) ([]byte, error)
 }
 
@@ -45,6 +55,12 @@ func NewSafeDeleter(log zerolog.Logger, dryRun bool, deleteMode, wipeArgs, logLe
 		logLevel:   strings.ToLower(strings.TrimSpace(logLevel)),
 		runner:     runCommand,
 	}
+}
+
+// SetCrypter injects the archive crypter used by crypt/* delete modes.
+func (d *SafeDeleter) SetCrypter(crypter Crypter) *SafeDeleter {
+	d.crypter = crypter
+	return d
 }
 
 // ClearDirectory deletes all entries directly inside a dataDir.
@@ -65,7 +81,15 @@ func (d *SafeDeleter) ClearDirectory(ctx context.Context, dir string) error {
 		return fmt.Errorf("read directory %q: %w", clean, err)
 	}
 	for _, e := range entries {
+		if strings.HasPrefix(d.deleteMode, "crypt/") && isManagedArchiveEntry(e.Name()) {
+			d.log.Debug().Str("path", filepath.Join(clean, e.Name())).Msg("skipping existing encrypted archive")
+			continue
+		}
 		files = append(files, filepath.Join(clean, e.Name()))
+	}
+
+	if strings.HasPrefix(d.deleteMode, "crypt/") {
+		return d.clearWithCrypt(ctx, clean, files)
 	}
 
 	if d.deleteMode == "wipe" {
@@ -85,28 +109,61 @@ func (d *SafeDeleter) ClearDirectories(ctx context.Context, dirs []string) error
 	return nil
 }
 
+func (d *SafeDeleter) clearWithCrypt(ctx context.Context, dataDir string, files []string) error {
+	if d.crypter == nil {
+		return errors.New("crypt delete mode requires a crypter")
+	}
+
+	nextArchiveIdx := 0
+	for _, target := range files {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		archivePath, archiveIdx, err := d.nextArchivePath(dataDir, nextArchiveIdx)
+		if err != nil {
+			return err
+		}
+		nextArchiveIdx = archiveIdx + 1
+
+		if d.dryRun {
+			d.log.Warn().Str("path", target).Str("archive", archivePath).Msg("dry-run enabled: would encrypt and delete entry")
+			continue
+		}
+
+		filesToEncrypt, err := collectRegularFiles(target)
+		if err != nil {
+			d.log.Error().Err(err).Str("path", target).Msg("failed collecting files for encryption")
+			continue
+		}
+		if len(filesToEncrypt) == 0 {
+			d.log.Debug().Str("path", target).Msg("deleting empty entry without encryption")
+			d.deleteTarget(ctx, target)
+			continue
+		}
+
+		if err := d.crypter.EncryptFiles(filesToEncrypt, archivePath); err != nil {
+			d.log.Error().Err(err).Str("path", target).Str("archive", archivePath).Msg("failed encrypting entry")
+			continue
+		}
+		d.log.Debug().Str("path", target).Str("archive", archivePath).Msg("encrypted entry")
+
+		d.deleteTarget(ctx, target)
+	}
+
+	return nil
+}
+
 // rm files & dirs from files[]
 func (d *SafeDeleter) clearWithRm(ctx context.Context, files []string) error {
-	return d.clearTargets(ctx, files, func(target string) {
-		if err := os.RemoveAll(target); err != nil {
-			d.log.Error().Err(err).Str("path", target).Msg("failed deleting entry")
-		} else {
-			d.log.Debug().Str("path", target).Msg("deleted entry")
-		}
-	})
+	return d.clearTargets(ctx, files, func(target string) { d.deleteWithRm(target) })
 }
 
 // wipe files & dirs from files[]
 func (d *SafeDeleter) clearWithWipe(ctx context.Context, files []string) error {
-	return d.clearTargets(ctx, files, func(target string) {
-		args := buildWipeArgs(d.wipeArgs, d.logLevel, target)
-		d.log.Info().Str("args", strings.Join(args, " ")).Msg("Starting wipe")
-		out, err := d.runner(ctx, "wipe", args...)
-		if err != nil {
-			d.log.Error().Err(err).Str("output", string(out)).Msg("wipe command failed")
-		}
-		d.log.Debug().Str("path", target).Str("output", string(out)).Msg("wipe command executed")
-	})
+	return d.clearTargets(ctx, files, func(target string) { d.deleteWithWipe(ctx, target) })
 }
 
 // calls clearFn on each file entry from  files[]
@@ -124,6 +181,74 @@ func (d *SafeDeleter) clearTargets(ctx context.Context, files []string, clearFn 
 		clearFn(target)
 	}
 	return nil
+}
+
+func (d *SafeDeleter) deleteTarget(ctx context.Context, target string) {
+	if d.baseDeleteMode() == "wipe" {
+		d.deleteWithWipe(ctx, target)
+		return
+	}
+	d.deleteWithRm(target)
+}
+
+func (d *SafeDeleter) deleteWithRm(target string) {
+	if err := os.RemoveAll(target); err != nil {
+		d.log.Error().Err(err).Str("path", target).Msg("failed deleting entry")
+	} else {
+		d.log.Debug().Str("path", target).Msg("deleted entry")
+	}
+}
+
+func (d *SafeDeleter) deleteWithWipe(ctx context.Context, target string) {
+	args := buildWipeArgs(d.wipeArgs, d.logLevel, target)
+	d.log.Info().Str("args", strings.Join(args, " ")).Msg("Starting wipe")
+	out, err := d.runner(ctx, "wipe", args...)
+	if err != nil {
+		d.log.Error().Err(err).Str("output", string(out)).Msg("wipe command failed")
+	}
+	d.log.Debug().Str("path", target).Str("output", string(out)).Msg("wipe command executed")
+}
+
+func (d *SafeDeleter) baseDeleteMode() string {
+	if strings.HasPrefix(d.deleteMode, "crypt/") {
+		return strings.TrimPrefix(d.deleteMode, "crypt/")
+	}
+	return d.deleteMode
+}
+
+func (d *SafeDeleter) nextArchivePath(dataDir string, startIdx int) (string, int, error) {
+	for idx := startIdx; ; idx++ {
+		archivePath := filepath.Join(dataDir, d.crypter.GetCryptedFileName(idx))
+		_, err := os.Stat(archivePath)
+		if err == nil {
+			continue
+		}
+		if os.IsNotExist(err) {
+			return archivePath, idx, nil
+		}
+		return "", 0, fmt.Errorf("stat archive path %q: %w", archivePath, err)
+	}
+}
+
+func collectRegularFiles(root string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type().IsRegular() {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+func isManagedArchiveEntry(name string) bool {
+	return strings.HasPrefix(name, "file_") && strings.HasSuffix(name, fscrypt.FileExtension)
 }
 
 func buildWipeArgs(configuredArgs string, logLevel string, file string) []string {

@@ -9,11 +9,13 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"pulseorperish/internal/config"
 	"pulseorperish/internal/delete"
+	"pulseorperish/internal/fscrypt"
 	"pulseorperish/internal/httpapi"
 	"pulseorperish/internal/logx"
 	"pulseorperish/internal/monitor"
@@ -90,12 +92,21 @@ func main() {
 	cfg.DataDirs = safeDataDirs
 
 	st := state.NewStore(cfg.StateDir)
-	if cfg.DeleteMode == "wipe" {
+	if cfg.DeleteMode == "wipe" || cfg.DeleteMode == "crypt/wipe" {
 		if _, err := exec.LookPath("wipe"); err != nil {
-			logger.Fatal().Err(err).Msg("delete-method=wipe requires wipe binary to be installed")
+			logger.Fatal().Err(err).Str("deleteMethod", cfg.DeleteMode).Msg("wipe-based delete method requires wipe binary to be installed")
 		}
 	}
 	del := delete.NewSafeDeleter(logger, cfg.DryRun, cfg.DeleteMode, cfg.WipeArgs, cfg.LogLevel)
+	if strings.HasPrefix(cfg.DeleteMode, "crypt/") {
+		crypter := &fscrypt.FsCrypt{
+			Password: []byte(cfg.CryptPassword),
+			Compress: "gz",
+		}
+		crypter.Init()
+		defer crypter.Clear()
+		del.SetCrypter(crypter)
+	}
 	mon := monitor.NewService(logger, st, del, cfg.Interval, cfg.DryRun, cfg.DataDirs)
 
 	if err := mon.LoadInitialState(); err != nil {

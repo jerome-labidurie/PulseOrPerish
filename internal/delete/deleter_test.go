@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -15,6 +17,26 @@ import (
 
 	"github.com/rs/zerolog"
 )
+
+type fakeCrypter struct {
+	err     error
+	inputs  [][]string
+	outputs []string
+}
+
+func (f *fakeCrypter) EncryptFiles(filesin []string, fileout string) error {
+	cloned := append([]string(nil), filesin...)
+	f.inputs = append(f.inputs, cloned)
+	f.outputs = append(f.outputs, fileout)
+	if f.err != nil {
+		return f.err
+	}
+	return os.WriteFile(fileout, []byte(strings.Join(filesin, "\n")), 0o600)
+}
+
+func (f *fakeCrypter) GetCryptedFileName(idx int) string {
+	return fmt.Sprintf("file_%04d.tar.gz.pop", idx)
+}
 
 func TestWipeBinaryAvailableInTestEnvironment(t *testing.T) {
 	if _, err := exec.LookPath("wipe"); err != nil {
@@ -128,6 +150,185 @@ func TestRmClearDirectory_RespectsCanceledContext(t *testing.T) {
 
 func TestWipeClearDirectory_RespectsCanceledContext(t *testing.T) {
 	testClearDirectory_RespectsCanceledContext(t, "wipe")
+}
+
+func TestCryptClearDirectory_RequiresCrypter(t *testing.T) {
+	d := t.TempDir()
+	fshelpers.CreateTestFile(t, d, "file.txt")
+
+	del := NewSafeDeleter(zerolog.Nop(), false, "crypt/rm", "", "info")
+	err := del.ClearDirectory(context.Background(), d)
+	if err == nil {
+		t.Fatal("expected error when crypter is missing")
+	}
+	if !strings.Contains(err.Error(), "requires a crypter") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func testCryptClearDirectory_CreatesArchivePerTopLevelEntry(t *testing.T, deleteMode string) {
+	d := t.TempDir()
+	topFile := fshelpers.CreateTestFile(t, d, "alpha.txt")
+	nestedDir := filepath.Join(d, "nested")
+	if err := os.MkdirAll(filepath.Join(nestedDir, "deep"), 0o755); err != nil {
+		t.Fatalf("failed to create nested directory: %v", err)
+	}
+	nestedFile := fshelpers.CreateTestFile(t, nestedDir, "beta.txt")
+	deepFile := fshelpers.CreateTestFile(t, filepath.Join(nestedDir, "deep"), "gamma.txt")
+
+	crypter := &fakeCrypter{}
+	del := NewSafeDeleter(zerolog.Nop(), false, deleteMode, "-q -Q 1", "info").SetCrypter(crypter)
+	if deleteMode == "crypt/wipe" {
+		del.runner = func(ctx context.Context, bin string, args ...string) ([]byte, error) {
+			target := args[len(args)-1]
+			if err := os.RemoveAll(target); err != nil {
+				return nil, err
+			}
+			return []byte("wiped"), nil
+		}
+	}
+
+	if err := del.ClearDirectory(context.Background(), d); err != nil {
+		t.Fatalf("clear failed: %v", err)
+	}
+
+	if _, err := os.Stat(d); err != nil {
+		t.Fatalf("expected root directory to remain: %v", err)
+	}
+	fshelpers.AssertFilesDeleted(t, []string{topFile, nestedFile, deepFile})
+
+	entries, err := os.ReadDir(d)
+	if err != nil {
+		t.Fatalf("failed to read directory: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 archives, got %d entries", len(entries))
+	}
+
+	var gotNames []string
+	for _, entry := range entries {
+		gotNames = append(gotNames, entry.Name())
+	}
+	sort.Strings(gotNames)
+	expectedNames := []string{"file_0000.tar.gz.pop", "file_0001.tar.gz.pop"}
+	if strings.Join(gotNames, ",") != strings.Join(expectedNames, ",") {
+		t.Fatalf("unexpected archive names: got %v want %v", gotNames, expectedNames)
+	}
+
+	if len(crypter.inputs) != 2 {
+		t.Fatalf("expected 2 encryption calls, got %d", len(crypter.inputs))
+	}
+	if len(crypter.inputs[0]) != 1 || crypter.inputs[0][0] != topFile {
+		t.Fatalf("expected first archive to contain the top-level file, got %v", crypter.inputs[0])
+	}
+	sort.Strings(crypter.inputs[1])
+	expectedNested := []string{deepFile, nestedFile}
+	sort.Strings(expectedNested)
+	if strings.Join(crypter.inputs[1], ",") != strings.Join(expectedNested, ",") {
+		t.Fatalf("expected nested archive contents %v, got %v", expectedNested, crypter.inputs[1])
+	}
+}
+
+func TestCryptRmClearDirectory_CreatesArchivePerTopLevelEntry(t *testing.T) {
+	testCryptClearDirectory_CreatesArchivePerTopLevelEntry(t, "crypt/rm")
+}
+
+func TestCryptWipeClearDirectory_CreatesArchivePerTopLevelEntry(t *testing.T) {
+	testCryptClearDirectory_CreatesArchivePerTopLevelEntry(t, "crypt/wipe")
+}
+
+func TestCryptRmClearDirectory_DryRunKeepsContentAndSkipsArchive(t *testing.T) {
+	d := t.TempDir()
+	fshelpers.CreateTestFile(t, d, "file.txt")
+	crypter := &fakeCrypter{}
+
+	del := NewSafeDeleter(zerolog.Nop(), true, "crypt/rm", "", "info").SetCrypter(crypter)
+	if err := del.ClearDirectory(context.Background(), d); err != nil {
+		t.Fatalf("clear failed: %v", err)
+	}
+
+	if got := fshelpers.CountFilesInDir(t, d); got != 1 {
+		t.Fatalf("expected directory content unchanged in dry-run, got %d entries", got)
+	}
+	if len(crypter.outputs) != 0 {
+		t.Fatalf("expected no archive to be created in dry-run, got %v", crypter.outputs)
+	}
+}
+
+func TestCryptRmClearDirectory_RespectsCanceledContext(t *testing.T) {
+	d := t.TempDir()
+	fshelpers.CreateTestFile(t, d, "file.txt")
+	crypter := &fakeCrypter{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	del := NewSafeDeleter(zerolog.Nop(), false, "crypt/rm", "", "info").SetCrypter(crypter)
+	err := del.ClearDirectory(ctx, d)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context canceled error, got: %v", err)
+	}
+	if len(crypter.outputs) != 0 {
+		t.Fatalf("expected no archive attempt after cancellation, got %v", crypter.outputs)
+	}
+}
+
+func TestCryptRmClearDirectory_SkipsDeleteWhenEncryptionFails(t *testing.T) {
+	d := t.TempDir()
+	original := fshelpers.CreateTestFile(t, d, "file.txt")
+	crypter := &fakeCrypter{err: errors.New("boom")}
+
+	del := NewSafeDeleter(zerolog.Nop(), false, "crypt/rm", "", "info").SetCrypter(crypter)
+	if err := del.ClearDirectory(context.Background(), d); err != nil {
+		t.Fatalf("expected nil despite encryption failure, got: %v", err)
+	}
+
+	fshelpers.AssertFilesExist(t, []string{original})
+	if got := fshelpers.CountFilesInDir(t, d); got != 1 {
+		t.Fatalf("expected only original file to remain, got %d entries", got)
+	}
+}
+
+func TestCryptRmClearDirectory_DeletesEmptyDirectoriesWithoutArchive(t *testing.T) {
+	d := t.TempDir()
+	emptyDir := filepath.Join(d, "empty")
+	if err := os.MkdirAll(filepath.Join(emptyDir, "nested"), 0o755); err != nil {
+		t.Fatalf("failed to create empty nested directory: %v", err)
+	}
+	crypter := &fakeCrypter{}
+
+	del := NewSafeDeleter(zerolog.Nop(), false, "crypt/rm", "", "info").SetCrypter(crypter)
+	if err := del.ClearDirectory(context.Background(), d); err != nil {
+		t.Fatalf("clear failed: %v", err)
+	}
+
+	if _, err := os.Stat(emptyDir); !os.IsNotExist(err) {
+		t.Fatalf("expected empty directory to be deleted, got err=%v", err)
+	}
+	if len(crypter.outputs) != 0 {
+		t.Fatalf("expected no archive for empty directory, got %v", crypter.outputs)
+	}
+	fshelpers.AssertDirIsEmpty(t, d)
+}
+
+func TestCryptRmClearDirectory_SkipsArchiveNamesThatAlreadyExist(t *testing.T) {
+	d := t.TempDir()
+	_ = fshelpers.CreateTestFile(t, d, "file_0000.tar.gz.pop")
+	original := fshelpers.CreateTestFile(t, d, "payload.txt")
+	crypter := &fakeCrypter{}
+
+	del := NewSafeDeleter(zerolog.Nop(), false, "crypt/rm", "", "info").SetCrypter(crypter)
+	if err := del.ClearDirectory(context.Background(), d); err != nil {
+		t.Fatalf("clear failed: %v", err)
+	}
+
+	fshelpers.AssertFilesDeleted(t, []string{original})
+	if len(crypter.outputs) != 1 {
+		t.Fatalf("expected one archive output, got %d", len(crypter.outputs))
+	}
+	if !strings.HasSuffix(crypter.outputs[0], "file_0001.tar.gz.pop") {
+		t.Fatalf("expected archive naming to skip existing files, got %v", crypter.outputs)
+	}
 }
 
 func TestClearDirectory_ContinuesWhenRemoveAllFails(t *testing.T) {

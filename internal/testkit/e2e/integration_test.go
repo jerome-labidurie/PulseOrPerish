@@ -228,6 +228,77 @@ func TestDeadlineTriggersWipeDelection(t *testing.T) {
 	testDeadlineTriggersFileDelection(t, "wipe")
 }
 
+func testDeadlineTriggersCryptDeletion(t *testing.T, deleteMode string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	listenAddr := nextListenAddr(t)
+
+	env := setupTestEnv(t, 2)
+	app, err := StartAppWithCryptDeleteMethod(t, listenAddr, env.DataDir, env.StateDir, password, testInterval, deleteMode, "-q -Q 1", password)
+	if err != nil {
+		t.Fatalf("failed to start app: %v", err)
+	}
+	defer app.Stop()
+
+	client := NewAppClient(t, listenAddr, password)
+
+	proofStatus, err := client.ProofOfLife(ctx)
+	if err != nil {
+		t.Fatalf("failed to send initial proof: %v", err)
+	}
+	t.Logf("Proof sent: nextDeletion=%v", proofStatus["nextDeletion"])
+
+	var files []string
+	expectedArchives := map[string]int{}
+	for _, dir := range env.DataDir {
+		files = append(files, fshelpers.CreateNestedTestFiles(t, dir)...)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("failed to read top-level entries from %s: %v", dir, err)
+		}
+		expectedArchives[dir] = len(entries)
+	}
+	fshelpers.AssertFilesExist(t, files)
+	t.Logf("Created %d test files in %d dirs", len(files), len(env.DataDir))
+
+	t.Logf("Waiting for crypt deletion (interval=%v, maxWait=%v)...", testInterval, maxDeletionWait)
+	waitCtx, waitCancel := context.WithTimeout(ctx, maxDeletionWait+10*time.Second)
+	if err := WaitForFilesDeleted(waitCtx, files, maxDeletionWait); err != nil {
+		waitCancel()
+		t.Logf("App stdout: %s", app.Stdout())
+		if st, e := client.GetStatus(ctx); e == nil {
+			t.Logf("Final status: overdue=%v, nextDeletion=%v", st["overdue"], st["nextDeletion"])
+		}
+		t.Fatalf("files were not deleted after deadline: %v", err)
+	}
+	waitCancel()
+
+	for _, dir := range env.DataDir {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("failed to read archive directory %s: %v", dir, err)
+		}
+		if len(entries) != expectedArchives[dir] {
+			t.Fatalf("expected %d archive entries in %s, got %d", expectedArchives[dir], dir, len(entries))
+		}
+		for _, entry := range entries {
+			if !strings.HasPrefix(entry.Name(), "file_") || !strings.HasSuffix(entry.Name(), ".pop") {
+				t.Fatalf("expected only managed archives in %s, found %s", dir, entry.Name())
+			}
+		}
+	}
+	requireAppStillHealthy(t, listenAddr)
+	t.Log("PASS: Files encrypted and deleted at deadline")
+}
+
+func TestDeadlineTriggersCryptRmDelection(t *testing.T) {
+	testDeadlineTriggersCryptDeletion(t, "crypt/rm")
+}
+
+func TestDeadlineTriggersCryptWipeDelection(t *testing.T) {
+	testDeadlineTriggersCryptDeletion(t, "crypt/wipe")
+}
+
 // TestMultipleProofCycles verifies that multiple proof of life requests work correctly.
 func TestMultipleProofCycles(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
