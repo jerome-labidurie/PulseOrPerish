@@ -28,7 +28,7 @@ const (
 	randomPasswordLen = 32
 )
 
-var validDeleteModes := []string{"rm", "wipe", "crypt/rm", "crypt/wipe"}
+var validDeleteModes = []string{"rm", "wipe", "crypt/rm", "crypt/wipe"}
 
 var sizedNumberPattern = regexp.MustCompile(`^\d+([KMG])?$`)
 
