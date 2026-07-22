@@ -33,6 +33,7 @@ go build -o popcrypt ./cmd/popcrypt
 ```
 
 ## Examples
+
 ### Decrypt and Restore
 Decrypt (assuming `POP_CRYPT_PASSWORD` was configured with `mySecretPassword`) :
 ```bash
@@ -45,6 +46,21 @@ This produces:
 Extract:
 ```bash
 tar -xvzf file_0000.tar.gz
+```
+
+### From a Docker container
+If you prefer not to build locally, you can run `popcrypt` from a container.
+
+```bash
+# Use the published image from the repository:
+# you may want to use your version instead of latest
+IMAGE="ghcr.io/jerome-labidurie/pulseorperish:latest"
+# Decrypt
+docker run --rm -it \
+  -v "$(pwd)":/work \
+  -w /work \
+  --entrypoint /popcrypt \
+  "$IMAGE" -p "mySecretPassword" -d file_0000.tar.gz.pop
 ```
 
 ### Encrypt

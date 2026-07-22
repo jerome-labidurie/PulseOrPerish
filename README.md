@@ -15,12 +15,11 @@ mkdir /tmp/demo-data /tmp/demo-state
 docker run --rm -it -p 8086:8080 \
   -e POP_PASSWORD=mysecret \
   -e POP_DATA_DIRS=/data \
-  -e POP_STATE_DIR=/state \
   -v /tmp/demo-data:/data \
   -v /tmp/demo-state:/state \
   ghcr.io/jerome-labidurie/pulseorperish:latest
 ```
-Then open `http://localhost:8086` and send a proof-of-life by clicking the red button.
+Then open [http://localhost:8086](http://localhost:8086) and send a proof-of-life by clicking the red button.
 
 You can also use the [docker-compose](./docker-compose.yml) example
 
