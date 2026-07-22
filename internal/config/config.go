@@ -3,9 +3,11 @@
 package config
 
 import (
+	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -23,22 +25,24 @@ const (
 	defaultLogLevel   = "info"
 	defaultDeleteMode = "rm"
 	defaultWipeArgs   = "-q -Q 1"
+	randomPasswordLen = 32
 )
 
 var sizedNumberPattern = regexp.MustCompile(`^\d+([KMG])?$`)
 
 // Config holds the resolved runtime configuration for PulseOrPerish.
 type Config struct {
-	ListenAddr string
-	Password   string
-	Interval   time.Duration
-	DryRun     bool
-	DeleteMode string
-	WipeArgs   string
-	DataDirs   []string
-	StateDir   string
-	LogPath    string
-	LogLevel   string
+	ListenAddr    string
+	Password      string
+	Interval      time.Duration
+	DryRun        bool
+	DeleteMode    string
+	WipeArgs      string
+	CryptPassword string
+	DataDirs      []string
+	StateDir      string
+	LogPath       string
+	LogLevel      string
 }
 
 // Redacted returns a copy of the config safe to emit in logs.
@@ -46,6 +50,9 @@ func (c Config) Redacted() Config {
 	copy := c
 	if copy.Password != "" {
 		copy.Password = "***"
+	}
+	if copy.CryptPassword != "" {
+		copy.CryptPassword = "***"
 	}
 	return copy
 }
@@ -65,6 +72,7 @@ func Load(args []string) (Config, error) {
 	dryRun := fs.Bool("dry-run", boolEnvOrDefault("POP_DRY_RUN", false), "enable dry-run mode (no deletion)")
 	deleteMode := fs.String("delete-method", strings.ToLower(envOrDefault("POP_DELETE_METHOD", defaultDeleteMode)), "deletion method: rm|wipe")
 	wipeArgs := fs.String("wipe-args", envOrDefault("POP_WIPE_ARGS", defaultWipeArgs), "wipe arguments (whitelisted options only)")
+	cryptPassword := fs.String("crypt-password", envOrDefault("POP_CRYPT_PASSWORD", ""), "password source for crypt delete methods")
 	dataDir := fs.String("data-dirs", envOrDefault("POP_DATA_DIRS", ""), "directories whose content will be erased")
 	stateDir := fs.String("state-dir", envOrDefault("POP_STATE_DIR", defaultStateDir), "directory used for persistent state")
 	logPath := fs.String("log-path", envOrDefault("POP_LOG_PATH", defaultLogPath), "log directory (if set, logs are also written to a timestamped file)")
@@ -76,17 +84,23 @@ func Load(args []string) (Config, error) {
 
 	dataDirs := strings.SplitN(strings.TrimSpace(*dataDir), ",", -1)
 
+	resolvedCryptPassword, err := ResolveCryptPassword(strings.TrimSpace(*cryptPassword), *password)
+	if err != nil {
+		return Config{}, err
+	}
+
 	cfg = Config{
-		ListenAddr: strings.TrimSpace(*listen),
-		Password:   *password,
-		Interval:   *interval,
-		DryRun:     *dryRun,
-		DeleteMode: strings.ToLower(strings.TrimSpace(*deleteMode)),
-		WipeArgs:   strings.TrimSpace(*wipeArgs),
-		DataDirs:   dataDirs,
-		StateDir:   strings.TrimSpace(*stateDir),
-		LogPath:    strings.TrimSpace(*logPath),
-		LogLevel:   strings.ToLower(strings.TrimSpace(*logLevel)),
+		ListenAddr:    strings.TrimSpace(*listen),
+		Password:      *password,
+		Interval:      *interval,
+		DryRun:        *dryRun,
+		DeleteMode:    strings.ToLower(strings.TrimSpace(*deleteMode)),
+		WipeArgs:      strings.TrimSpace(*wipeArgs),
+		CryptPassword: resolvedCryptPassword,
+		DataDirs:      dataDirs,
+		StateDir:      strings.TrimSpace(*stateDir),
+		LogPath:       strings.TrimSpace(*logPath),
+		LogLevel:      strings.ToLower(strings.TrimSpace(*logLevel)),
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -120,7 +134,7 @@ func (c Config) Validate() error {
 	if !filepath.IsAbs(c.StateDir) {
 		return errors.New("state-dir must be an absolute path")
 	}
-	validDeleteModes := []string{"rm", "wipe"}
+	validDeleteModes := []string{"rm", "wipe", "crypt/rm", "crypt/wipe"}
 	validDeleteMode := false
 	for _, mode := range validDeleteModes {
 		if c.DeleteMode == mode {
@@ -131,10 +145,13 @@ func (c Config) Validate() error {
 	if !validDeleteMode {
 		return fmt.Errorf("invalid delete-method %q, must be one of %v", c.DeleteMode, validDeleteModes)
 	}
-	if c.DeleteMode == "wipe" {
+	if c.DeleteMode == "wipe" || c.DeleteMode == "crypt/wipe" {
 		if err := validateWipeArgs(c.WipeArgs); err != nil {
 			return err
 		}
+	}
+	if strings.HasPrefix(c.DeleteMode, "crypt/") && c.CryptPassword == "" {
+		return errors.New("crypt-password resolved to an empty value")
 	}
 	validLevels := []string{"debug", "info", "warn", "error"}
 	validLevel := false
@@ -148,6 +165,52 @@ func (c Config) Validate() error {
 		return fmt.Errorf("invalid log-level %q, must be one of %v", c.LogLevel, validLevels)
 	}
 	return nil
+}
+
+// ResolveCryptPassword returns the password to use for crypt delete methods.
+// An empty spec falls back to the main password. The special value "random"
+// generates a one-time password. A "file:/path" spec loads the password from a file.
+func ResolveCryptPassword(spec string, fallback string) (string, error) {
+	trimmed := strings.TrimSpace(spec)
+	if trimmed == "" {
+		return fallback, nil
+	}
+	if trimmed == "random" {
+		return generateRandomPassword(randomPasswordLen)
+	}
+	if strings.HasPrefix(trimmed, "file:") {
+		return resolveCryptPasswordFile(strings.TrimPrefix(trimmed, "file:"))
+	}
+	return trimmed, nil
+}
+
+func resolveCryptPasswordFile(path string) (string, error) {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		return "", errors.New("crypt-password file path is empty")
+	}
+	data, err := os.ReadFile(trimmedPath)
+	if err != nil {
+		return "", fmt.Errorf("read crypt-password file: %w", err)
+	}
+	password := strings.TrimRight(string(data), "\r\n")
+	if password == "" {
+		return "", errors.New("crypt-password file is empty")
+	}
+	return password, nil
+}
+
+func generateRandomPassword(length int) (string, error) {
+	buf := make([]byte, length)
+	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
+		return "", fmt.Errorf("generate random crypt-password: %w", err)
+	}
+	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	chars := make([]byte, length)
+	for i, value := range buf {
+		chars[i] = alphabet[int(value)%len(alphabet)]
+	}
+	return string(chars), nil
 }
 
 // envOrDefault returns the trimmed environment value or fallback when empty.
