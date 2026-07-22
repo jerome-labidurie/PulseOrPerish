@@ -3,6 +3,18 @@ name: Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version label used in artifact names during manual runs
+        required: false
+        default: dry-run
+        type: string
+      publish:
+        description: Publish release assets and push container image
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -10,6 +22,8 @@ permissions:
 
 env:
   IMAGE_NAME: pulseorperish
+  RELEASE_VERSION: ${{ github.event_name == 'release' && github.ref_name || inputs.version }}
+  PUBLISH_RELEASE: ${{ github.event_name == 'release' || inputs.publish }}
 
 jobs:
   binaries:
@@ -47,7 +61,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           EXT: ${{ matrix.ext }}
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ env.RELEASE_VERSION }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -57,9 +71,10 @@ jobs:
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o "$output" ./cmd/pulseorperish
 
       - name: Upload binary to GitHub release
+        if: env.PUBLISH_RELEASE == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/pulseorperish_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
+          files: dist/pulseorperish_${{ env.RELEASE_VERSION }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
 
   popcrypt:
     name: Build popcrypt release binary
@@ -82,7 +97,7 @@ jobs:
 
       - name: Build popcrypt binary
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ env.RELEASE_VERSION }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -92,9 +107,10 @@ jobs:
           go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o "$output" ./cmd/popcrypt
 
       - name: Upload popcrypt binary to GitHub release
+        if: env.PUBLISH_RELEASE == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/popcrypt_${{ github.ref_name }}_linux_amd64
+          files: dist/popcrypt_${{ env.RELEASE_VERSION }}_linux_amd64
 
   docker:
     name: Build and push Docker image to GHCR
@@ -105,6 +121,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Login to GHCR
+        if: env.PUBLISH_RELEASE == 'true'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -118,12 +135,12 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
+          push: ${{ env.PUBLISH_RELEASE == 'true' }}
           platforms: linux/amd64
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ env.RELEASE_VERSION }}
             CREATED=${{ github.event.release.published_at }}
             SOURCE_URL=https://github.com/${{ github.repository }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
             ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
