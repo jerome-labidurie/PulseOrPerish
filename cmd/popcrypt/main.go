@@ -106,7 +106,6 @@ func main() {
 		log.Fatal().Msg("Only gz & lzw supported")
 	}
 	// log.Printf("%v\n", flag.Args())
-
 	fc := fscrypt.FsCrypt{
 		Password: []byte(passwordStr),
 		Compress: *compressor,

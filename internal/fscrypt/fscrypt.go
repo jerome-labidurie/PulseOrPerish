@@ -104,6 +104,8 @@ func (fc FsCrypt) EncryptPaths(filesin []string, fileout string) error {
 		return ErrNoFilesToEncrypt
 	}
 
+	fc.Logger.Debug().Strs("files", regularFiles).Str("out", fileout).Msg("Encrypting files")
+
 	var xzw io.WriteCloser
 	writer, err := os.Create(fileout) // erase fileout if exists
 	if err != nil {
@@ -120,6 +122,7 @@ func (fc FsCrypt) EncryptPaths(filesin []string, fileout string) error {
 	if _, err := writer.Write(salt); err != nil {
 		return fmt.Errorf("failed to write salt: %w", err)
 	}
+	fc.Logger.Debug().Str("salt", fmt.Sprintf("%x", salt)).Msg("Generated salt for encryption")
 	key := fc.pwdToKey(salt)
 
 	preader, pwriter := io.Pipe()
@@ -209,11 +212,14 @@ func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 	}
 	defer writer.Close()
 
+	fc.Logger.Debug().Str("in", filein).Str("out", fileout).Msg("Decrypting archive")
+
 	// read salt from the beginning of the file
 	salt := make([]byte, saltSize)
 	if _, err := io.ReadFull(reader, salt); err != nil {
 		return fmt.Errorf("failed to read salt: %w", err)
 	}
+	fc.Logger.Debug().Str("salt", fmt.Sprintf("%x", salt)).Msg("Read salt for decryption")
 	key := fc.pwdToKey(salt)
 
 	// decrypt rest of the file
