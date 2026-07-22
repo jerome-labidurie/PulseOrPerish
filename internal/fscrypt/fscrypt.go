@@ -16,7 +16,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 	"golang.org/x/crypto/argon2"
 
 	"github.com/nathants/go-libsodium"
@@ -34,6 +34,7 @@ const (
 type FsCrypt struct {
 	Compress string // compression algo
 	Password []byte // pwd for [en|de]crypt
+	Logger   zerolog.Logger
 }
 
 // Init initializes the libsodium library.
@@ -67,7 +68,7 @@ func (fc FsCrypt) addToArchive(tw *tar.Writer, filename string) error {
 		return err
 	}
 
-	log.Debug().Str("fname", filename).Msg("Add file to tar")
+	fc.Logger.Debug().Str("fname", filename).Msg("Add file to tar")
 	header, err := tar.FileInfoHeader(info, info.Name())
 	if err != nil {
 		return err
@@ -130,7 +131,7 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 		tw := tar.NewWriter(xzw)
 		for _, filename := range filesin {
 			if err := fc.addToArchive(tw, filename); err != nil {
-				log.Error().Err(err).Str("file", filename).Msg("failed to add file to archive")
+				fc.Logger.Error().Err(err).Str("file", filename).Msg("failed to add file to archive")
 				continue
 			}
 		}
@@ -154,7 +155,7 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 		defer wg.Done()
 		if err := libsodium.StreamEncrypt(key, preader, writer); err != nil {
 			encryptErr = err
-			log.Error().Err(err).Msg("stream encryption failed")
+			fc.Logger.Error().Err(err).Msg("stream encryption failed")
 		}
 	}()
 
@@ -162,7 +163,7 @@ func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
 	if err := errors.Join(tarErr, encryptErr); err != nil {
 		return err
 	}
-	log.Info().Str("fname", fileout).Msg("Encrypted archive")
+	fc.Logger.Info().Str("fname", fileout).Msg("Encrypted archive")
 	return nil
 }
 
@@ -192,7 +193,7 @@ func (fc FsCrypt) DecryptFile(filein string, fileout string) error {
 	if err != nil {
 		return err
 	}
-	log.Info().Str("out", fileout).Str("in", filein).Msg("Decrypted archive")
+	fc.Logger.Info().Str("out", fileout).Str("in", filein).Msg("Decrypted archive")
 	return nil
 }
 

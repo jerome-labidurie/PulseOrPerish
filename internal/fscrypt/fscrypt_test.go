@@ -11,10 +11,16 @@ import (
 	"testing"
 
 	"pulseorperish/internal/testkit/fshelpers"
+
+	"github.com/rs/zerolog"
 )
 
+func testFsCrypt(password []byte, compress string) FsCrypt {
+	return FsCrypt{Password: password, Compress: compress, Logger: zerolog.Nop()}
+}
+
 func TestPwdToKey_Length(t *testing.T) {
-	fc := FsCrypt{Password: []byte("password-1234")}
+	fc := testFsCrypt([]byte("password-1234"), "")
 	salt := make([]byte, saltSize)
 	key := fc.pwdToKey(salt)
 	if len(key) != int(keySize) {
@@ -23,7 +29,7 @@ func TestPwdToKey_Length(t *testing.T) {
 }
 
 func TestPwdToKey_Deterministic(t *testing.T) {
-	fc := FsCrypt{Password: []byte("same-password")}
+	fc := testFsCrypt([]byte("same-password"), "")
 	salt := []byte("0123456789abcdef") // 16 bytes
 
 	key1 := fc.pwdToKey(salt)
@@ -34,7 +40,7 @@ func TestPwdToKey_Deterministic(t *testing.T) {
 }
 
 func TestPwdToKey_DifferentSalts(t *testing.T) {
-	fc := FsCrypt{Password: []byte("same-password")}
+	fc := testFsCrypt([]byte("same-password"), "")
 	salt1 := bytes.Repeat([]byte{0x00}, saltSize)
 	salt2 := bytes.Repeat([]byte{0xff}, saltSize)
 
@@ -48,15 +54,15 @@ func TestPwdToKey_DifferentSalts(t *testing.T) {
 func TestPwdToKey_DifferentPasswords(t *testing.T) {
 	salt := bytes.Repeat([]byte{0x42}, saltSize)
 
-	key1 := FsCrypt{Password: []byte("password-a")}.pwdToKey(salt)
-	key2 := FsCrypt{Password: []byte("password-b")}.pwdToKey(salt)
+	key1 := testFsCrypt([]byte("password-a"), "").pwdToKey(salt)
+	key2 := testFsCrypt([]byte("password-b"), "").pwdToKey(salt)
 	if bytes.Equal(key1, key2) {
 		t.Error("different passwords should produce different keys")
 	}
 }
 
 func TestPwdToKey_EmptyPassword(t *testing.T) {
-	fc := FsCrypt{Password: []byte("")}
+	fc := testFsCrypt([]byte(""), "")
 	salt := bytes.Repeat([]byte{0x01}, saltSize)
 	key := fc.pwdToKey(salt)
 	if len(key) != int(keySize) {
@@ -67,7 +73,7 @@ func TestPwdToKey_EmptyPassword(t *testing.T) {
 // Clear
 func TestClear(t *testing.T) {
 	pwd := []byte("password1234")
-	fc := FsCrypt{Password: pwd}
+	fc := testFsCrypt(pwd, "")
 	fc.Clear()
 	for i, b := range fc.Password {
 		if b != 0 {
@@ -89,7 +95,7 @@ func TestGetCryptedFileName(t *testing.T) {
 		{"gz", 6969, "file_6969.tar.gz." + FileExtension},
 	}
 	for _, tc := range tests {
-		fc := FsCrypt{Compress: tc.compress}
+		fc := testFsCrypt(nil, tc.compress)
 		got := fc.GetCryptedFileName(tc.idx)
 		if got != tc.want {
 			t.Errorf("GetCryptedFileName(%d) with %s = %q, want %q", tc.idx, tc.compress, got, tc.want)
@@ -108,7 +114,7 @@ func TestGetPlainFileName(t *testing.T) {
 		{"file." + FileExtension, "file"},
 		{"file_no_extension", "file_no_extension"}, // no .pop suffix — unchanged
 	}
-	fc := FsCrypt{}
+	fc := testFsCrypt(nil, "")
 	for _, tc := range tests {
 		got := fc.GetPlainFileName(tc.input)
 		if got != tc.want {
@@ -121,7 +127,7 @@ func TestGetPlainFileName(t *testing.T) {
 
 func TestEncryptFiles_NonExistentInput(t *testing.T) {
 	tmpDir := t.TempDir()
-	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
+	fc := testFsCrypt([]byte("pass"), "gz")
 	fc.Init()
 
 	// A non-existent file is logged and skipped; the archive is still created.
@@ -135,7 +141,7 @@ func TestEncryptFiles_NonExistentInput(t *testing.T) {
 
 func TestEncryptFiles_EmptyInput(t *testing.T) {
 	tmpDir := t.TempDir()
-	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
+	fc := testFsCrypt([]byte("pass"), "gz")
 	fc.Init()
 
 	outFile := filepath.Join(tmpDir, fc.GetCryptedFileName(0))
@@ -147,7 +153,7 @@ func TestEncryptFiles_EmptyInput(t *testing.T) {
 
 func TestDecryptFile_NonExistentInput(t *testing.T) {
 	tmpDir := t.TempDir()
-	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
+	fc := testFsCrypt([]byte("pass"), "gz")
 	fc.Init()
 
 	err := fc.DecryptFile("/nonexistent/file."+FileExtension, filepath.Join(tmpDir, "out.tar.gz"))
@@ -158,7 +164,7 @@ func TestDecryptFile_NonExistentInput(t *testing.T) {
 
 func TestDecryptFile_ExistingOutput(t *testing.T) {
 	tmpDir := t.TempDir()
-	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
+	fc := testFsCrypt([]byte("pass"), "gz")
 	fc.Init()
 
 	// Create a dummy input file (just needs to exist for the open call).
@@ -175,7 +181,7 @@ func TestDecryptFile_ExistingOutput(t *testing.T) {
 
 func TestDecryptFile_TruncatedFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
+	fc := testFsCrypt([]byte("pass"), "gz")
 	fc.Init()
 
 	// Write fewer bytes than saltSize — ReadFull should fail.
@@ -206,7 +212,7 @@ func encryptDecryptRoundTrip(t *testing.T, compress, content string) (decryptedP
 		t.Fatalf("failed to create source file: %v", err)
 	}
 
-	fc := FsCrypt{Password: []byte("password1234"), Compress: compress}
+	fc := testFsCrypt([]byte("password1234"), compress)
 	fc.Init()
 
 	// Encrypt
@@ -300,7 +306,7 @@ func TestEncryptDecrypt_WrongPassword(t *testing.T) {
 
 	srcFile := fshelpers.CreateTestFile(t, tmpDir, "source.txt")
 
-	fcEnc := FsCrypt{Password: []byte("correct-password"), Compress: "gz"}
+	fcEnc := testFsCrypt([]byte("correct-password"), "gz")
 	fcEnc.Init()
 
 	encFile := filepath.Join(tmpDir, fcEnc.GetCryptedFileName(0))
@@ -308,7 +314,7 @@ func TestEncryptDecrypt_WrongPassword(t *testing.T) {
 		t.Fatalf("EncryptFiles failed: %v", err)
 	}
 
-	fcDec := FsCrypt{Password: []byte("wrong-password"), Compress: "gz"}
+	fcDec := testFsCrypt([]byte("wrong-password"), "gz")
 	fcDec.Init()
 
 	decFile := filepath.Join(tmpDir, fcEnc.GetPlainFileName(fcEnc.GetCryptedFileName(0)))

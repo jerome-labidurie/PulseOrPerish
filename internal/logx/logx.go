@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	zlog "github.com/rs/zerolog/log"
 )
 
 // New creates a zerolog.Logger at the given level. Logs are written in a human-
@@ -17,6 +18,8 @@ import (
 // existing directory: a timestamped file (format 20060102-150405.log) is
 // created inside it and logs are also written there in JSON format. The
 // returned io.Closer must be closed by the caller when path is non-empty.
+// It also wires the logger into the global zerolog logger used by packages
+// that log through zerolog/log.
 func New(level, path string) (zerolog.Logger, io.Closer, error) {
 	lvl, err := parseLevel(level)
 	if err != nil {
@@ -44,6 +47,8 @@ func New(level, path string) (zerolog.Logger, io.Closer, error) {
 	}
 
 	logger := zerolog.New(w).With().Timestamp().Logger().Level(lvl)
+	zerolog.SetGlobalLevel(logger.GetLevel())
+	zlog.Logger = logger
 	return logger, c, nil
 }
 

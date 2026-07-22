@@ -102,6 +102,7 @@ func main() {
 		crypter := &fscrypt.FsCrypt{
 			Password: []byte(cfg.CryptPassword),
 			Compress: "gz",
+			Logger:   logger,
 		}
 		crypter.Init()
 		defer crypter.Clear()

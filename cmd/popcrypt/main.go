@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"pulseorperish/internal/fscrypt"
+	"pulseorperish/internal/logx"
 	"strings"
 
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -91,12 +91,14 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 
-	// set logger
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	level := "info"
 	if *debug {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		level = "debug"
+	}
+	logger, _, err := logx.New(level, "")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "logger error: %v\n", err)
+		os.Exit(2)
 	}
 
 	if *help {
@@ -134,6 +136,7 @@ func main() {
 	fc := fscrypt.FsCrypt{
 		Password: []byte(passwordStr),
 		Compress: *compressor,
+		Logger:   logger,
 	}
 
 	var hasError bool
