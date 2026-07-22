@@ -133,6 +133,18 @@ func TestEncryptFiles_NonExistentInput(t *testing.T) {
 	fshelpers.AssertFilesExist(t, []string{outFile})
 }
 
+func TestEncryptFiles_EmptyInput(t *testing.T) {
+	tmpDir := t.TempDir()
+	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}
+	fc.Init()
+
+	outFile := filepath.Join(tmpDir, fc.GetCryptedFileName(0))
+	err := fc.EncryptFiles([]string{}, outFile)
+	if err == nil {
+		t.Error("expected error for empty file list, got nil")
+	}
+}
+
 func TestDecryptFile_NonExistentInput(t *testing.T) {
 	tmpDir := t.TempDir()
 	fc := FsCrypt{Password: []byte("pass"), Compress: "gz"}

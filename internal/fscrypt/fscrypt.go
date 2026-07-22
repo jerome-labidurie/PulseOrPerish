@@ -73,7 +73,7 @@ func (fc FsCrypt) addToArchive(tw *tar.Writer, filename string) error {
 		return err
 	}
 
-	header.Name = filename
+	header.Name = strings.TrimLeft(filename, "./")
 	err = tw.WriteHeader(header)
 	if err != nil {
 		return err
@@ -89,6 +89,11 @@ func (fc FsCrypt) addToArchive(tw *tar.Writer, filename string) error {
 // encryptFiles creates an encrypted and compressed archive from a list of files.
 // It uses goroutines to handle the tar/zip compression stream and libsodium encryption simultaneously.
 func (fc FsCrypt) EncryptFiles(filesin []string, fileout string) error {
+	// Validate input
+	if len(filesin) == 0 {
+		return fmt.Errorf("no files to encrypt")
+	}
+
 	var xzw io.WriteCloser
 	writer, err := os.Create(fileout) // erase fileout if exists
 	if err != nil {
