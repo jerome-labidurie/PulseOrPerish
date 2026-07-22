@@ -12,7 +12,7 @@ ARG VERSION=dev
 
 RUN BUILD_DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ') && \
     COMMIT=$(git rev-parse --short HEAD) && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o /out/pulseorperish ./cmd/pulseorperish && \
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o /out/pulseorperish ./cmd/pulseorperish && \
     CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o /out/popcrypt ./cmd/popcrypt
 
 # no tag for distroless
