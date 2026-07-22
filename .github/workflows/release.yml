@@ -61,6 +61,41 @@ jobs:
         with:
           files: dist/pulseorperish_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
 
+  popcrypt:
+    name: Build popcrypt release binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install libsodium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsodium-dev
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build popcrypt binary
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          output="dist/popcrypt_${VERSION}_linux_amd64"
+          BUILD_DATE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          COMMIT=$(git rev-parse --short HEAD)
+          go build -trimpath -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -X main.CommitHash=${COMMIT}" -o "$output" ./cmd/popcrypt
+
+      - name: Upload popcrypt binary to GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/popcrypt_${{ github.ref_name }}_linux_amd64
+
   docker:
     name: Build and push Docker image to GHCR
     runs-on: ubuntu-latest
