@@ -26,19 +26,15 @@ const (
 	password = "test-password-12345"
 
 	// testInterval is the proof-of-life interval used in e2e tests.
-	// The monitor tick is clamped to a minimum of 1 minute (interval/10 clamped to [1min, 24h]),
-	// so the worst-case time from deadline to deletion is interval + 1min.
-	// With testInterval=70s, deletion happens at most ~130s after a proof.
-	testInterval = 70 * time.Second
+	// Monitor now has a 1s minimum tick, so deletion happens quickly after deadline.
+	testInterval = 6 * time.Second
 
 	// maxDeletionWait is how long we wait for files to be deleted after the deadline.
-	// = testInterval + 1 monitor tick (1min max) + safety margin
-	maxDeletionWait = testInterval + 70*time.Second
+	maxDeletionWait = testInterval + 5*time.Second
 
-	// fastDeletionInterval is used by robustness deletion tests to trigger deletion
-	// on the first monitor tick (~1 minute).
-	fastDeletionInterval = 30 * time.Second
-	fastDeletionWait     = 95 * time.Second
+	// fastDeletionInterval is used by robustness deletion tests.
+	fastDeletionInterval = 3 * time.Second
+	fastDeletionWait     = 12 * time.Second
 )
 
 // TestEnv holds temporary directories for a test run.
@@ -167,7 +163,7 @@ func TestProofOfLifePostponePostponeDeadline(t *testing.T) {
 // TestDeadlineTriggersFileDelection verifies that when the deadline arrives
 // without a new proof of life, files are deleted.
 func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 
@@ -198,9 +194,7 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	fshelpers.AssertFilesExist(t, files)
 	t.Logf("Created %d test files in %d dirs", len(files), len(env.DataDir))
 
-	// Wait for deletion.
-	// With testInterval=90s and a 1-minute minimum tick, deletion happens
-	// at most ~150s after the proof. maxDeletionWait adds a safety margin.
+	// Wait for deletion after the deadline.
 	t.Logf("Waiting for deletion (interval=%v, maxWait=%v)...", testInterval, maxDeletionWait)
 	waitCtx, waitCancel := context.WithTimeout(ctx, maxDeletionWait+10*time.Second)
 	if err := WaitForDirEmpty(waitCtx, env.DataDir[1], maxDeletionWait); err != nil {
@@ -452,7 +446,7 @@ func TestHTMLFrontendLoads(t *testing.T) {
 // TestDryRunModePreventsDeletion verifies that with dry-run enabled,
 // files are NOT deleted even after the deadline.
 func TestDryRunModePreventsDeletion(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), maxDeletionWait+20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), maxDeletionWait+10*time.Second)
 	defer cancel()
 
 	listenAddr := nextListenAddr(t)
@@ -703,7 +697,7 @@ func TestRobustnessPermissionRevocationMidOperation(t *testing.T) {
 		t.Skip("permission mode manipulation is not portable on windows")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 	env := setupTestEnv(t, 1)
@@ -747,7 +741,7 @@ func TestRobustnessSymlinksAndSpecialFilesInDataDir(t *testing.T) {
 		t.Skip("symlink and fifo behavior differs on windows")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
 	env := setupTestEnv(t, 1)
