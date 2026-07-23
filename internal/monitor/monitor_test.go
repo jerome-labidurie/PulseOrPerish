@@ -68,3 +68,35 @@ func TestSnapshotNextDeletionStableWithoutProof(t *testing.T) {
 		t.Fatalf("unexpected second next deletion: got=%s want=%s", second.NextDeletion, want)
 	}
 }
+
+func TestLoadInitialStatePersistsStartupProofAcrossRestart(t *testing.T) {
+	d := t.TempDir()
+	storePath := filepath.Join(d, "state")
+	del := delete.NewSafeDeleter(zerolog.Nop(), false, "rm", "", "info")
+
+	first := NewService(zerolog.Nop(), state.NewStore(storePath), del, time.Minute, false, []string{filepath.Join(d, "data")})
+	if err := first.LoadInitialState(); err != nil {
+		t.Fatal(err)
+	}
+
+	firstSnap := first.Snapshot(first.startedAt)
+	if firstSnap.LastProofAt.IsZero() {
+		t.Fatal("expected startup proof to be persisted")
+	}
+
+	// Simulate a restart with a new service instance.
+	second := NewService(zerolog.Nop(), state.NewStore(storePath), del, time.Minute, false, []string{filepath.Join(d, "data")})
+	if err := second.LoadInitialState(); err != nil {
+		t.Fatal(err)
+	}
+
+	secondSnap := second.Snapshot(second.startedAt)
+	if !secondSnap.LastProofAt.Equal(firstSnap.LastProofAt) {
+		t.Fatalf("expected persisted last proof across restart: first=%s second=%s", firstSnap.LastProofAt, secondSnap.LastProofAt)
+	}
+
+	wantNextDeletion := firstSnap.LastProofAt.Add(time.Minute)
+	if !secondSnap.NextDeletion.Equal(wantNextDeletion) {
+		t.Fatalf("expected stable next deletion from persisted proof: got=%s want=%s", secondSnap.NextDeletion, wantNextDeletion)
+	}
+}
