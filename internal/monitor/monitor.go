@@ -43,11 +43,11 @@ type Service struct {
 }
 
 // NewService creates a Service. The evaluation tick is derived from interval
-// (interval/10, clamped between 1 minute and 24 hours).
+// (interval/10, clamped between 1 second and 24 hours).
 func NewService(log zerolog.Logger, st *state.Store, d delete.Deleter, interval time.Duration, dryRun bool, dataDir []string) *Service {
 	tick := interval / 10
-	if tick < time.Minute {
-		tick = time.Minute
+	if tick < time.Second {
+		tick = time.Second
 	}
 	if tick > 24*time.Hour {
 		tick = 24 * time.Hour
@@ -70,6 +70,13 @@ func (s *Service) LoadInitialState() error {
 	st, err := s.store.Load()
 	if err != nil {
 		return err
+	}
+	if st.LastProofAt.IsZero() {
+		// First startup: persist a startup proof-of-life so deadline survives restarts.
+		st = state.HeartbeatState{LastProofAt: s.startedAt, UpdatedBy: "startup"}
+		if err := s.store.Save(st); err != nil {
+			return err
+		}
 	}
 	s.mu.Lock()
 	s.lastProofAt = st.LastProofAt.UTC()
