@@ -288,11 +288,11 @@ func testDeadlineTriggersCryptDeletion(t *testing.T, deleteMode string) {
 	t.Log("PASS: Files encrypted and deleted at deadline")
 }
 
-func TestDeadlineTriggersCryptRmDelection(t *testing.T) {
+func TestDeadlineTriggersCryptRmDeletion(t *testing.T) {
 	testDeadlineTriggersCryptDeletion(t, "crypt/rm")
 }
 
-func TestDeadlineTriggersCryptWipeDelection(t *testing.T) {
+func TestDeadlineTriggersCryptWipeDeletion(t *testing.T) {
 	testDeadlineTriggersCryptDeletion(t, "crypt/wipe")
 }
 
