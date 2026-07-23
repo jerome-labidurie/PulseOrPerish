@@ -44,7 +44,7 @@ func (f *fakeCrypter) EncryptPaths(filesin []string, fileout string) error {
 }
 
 func (f *fakeCrypter) GetCryptedFileName(idx int) string {
-	return fmt.Sprintf("file_%04d.tar.gz.pop", idx)
+	return fmt.Sprintf("file_%04d.tar.gz.%s", idx, fscrypt.FileExtension)
 }
 
 func collectTestRegularFiles(roots []string) ([]string, error) {
@@ -238,7 +238,7 @@ func testCryptClearDirectory_CreatesArchivePerTopLevelEntry(t *testing.T, delete
 		gotNames = append(gotNames, entry.Name())
 	}
 	sort.Strings(gotNames)
-	expectedNames := []string{"file_0000.tar.gz.pop", "file_0001.tar.gz.pop"}
+	expectedNames := []string{"file_0000.tar.gz." + fscrypt.FileExtension, "file_0001.tar.gz." + fscrypt.FileExtension}
 	if strings.Join(gotNames, ",") != strings.Join(expectedNames, ",") {
 		t.Fatalf("unexpected archive names: got %v want %v", gotNames, expectedNames)
 	}
@@ -341,7 +341,7 @@ func TestCryptRmClearDirectory_DeletesEmptyDirectoriesWithoutArchive(t *testing.
 
 func TestCryptRmClearDirectory_SkipsArchiveNamesThatAlreadyExist(t *testing.T) {
 	d := t.TempDir()
-	_ = fshelpers.CreateTestFile(t, d, "file_0000.tar.gz.pop")
+	_ = fshelpers.CreateTestFile(t, d, "file_0000.tar.gz."+fscrypt.FileExtension)
 	original := fshelpers.CreateTestFile(t, d, "payload.txt")
 	crypter := &fakeCrypter{}
 
@@ -354,7 +354,7 @@ func TestCryptRmClearDirectory_SkipsArchiveNamesThatAlreadyExist(t *testing.T) {
 	if len(crypter.outputs) != 1 {
 		t.Fatalf("expected one archive output, got %d", len(crypter.outputs))
 	}
-	if !strings.HasSuffix(crypter.outputs[0], "file_0001.tar.gz.pop") {
+	if !strings.HasSuffix(crypter.outputs[0], "file_0001.tar.gz."+fscrypt.FileExtension) {
 		t.Fatalf("expected archive naming to skip existing files, got %v", crypter.outputs)
 	}
 }

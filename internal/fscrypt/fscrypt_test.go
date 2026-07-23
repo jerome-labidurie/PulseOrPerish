@@ -265,7 +265,7 @@ func encryptDecryptRoundTrip(t *testing.T, compress, content string) (decryptedP
 	return decFile
 }
 
-// readFirstTarEntry opens an encrypted archive, decompresses it using the
+// readFirstTarEntry opens an decrypted archive, decompresses it using the
 // provided decompress function, and returns the name and content of the first
 // tar entry. The decompress function must return an io.ReadCloser wrapping the
 // given io.Reader (e.g. gzip.NewReader or lzw.NewReader).
