@@ -71,6 +71,13 @@ func (s *Service) LoadInitialState() error {
 	if err != nil {
 		return err
 	}
+	if st.LastProofAt.IsZero() {
+		// First startup: persist a startup proof-of-life so deadline survives restarts.
+		st = state.HeartbeatState{LastProofAt: s.startedAt, UpdatedBy: "startup"}
+		if err := s.store.Save(st); err != nil {
+			return err
+		}
+	}
 	s.mu.Lock()
 	s.lastProofAt = st.LastProofAt.UTC()
 	s.deleteArmedAt = time.Time{}
