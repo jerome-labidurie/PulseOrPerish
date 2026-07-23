@@ -72,7 +72,7 @@ func Load(args []string) (Config, error) {
 	password := fs.String("password", envOrDefault("POP_PASSWORD", ""), "password for proof-of-life")
 	interval := fs.Duration("interval", durationEnvOrDefault("POP_INTERVAL", defaultInterval), "proof interval")
 	dryRun := fs.Bool("dry-run", boolEnvOrDefault("POP_DRY_RUN", false), "enable dry-run mode (no deletion)")
-	deleteMode := fs.String("delete-method", strings.ToLower(envOrDefault("POP_DELETE_METHOD", defaultDeleteMode)), "deletion method: rm|wipe")
+	deleteMode := fs.String("delete-method", strings.ToLower(envOrDefault("POP_DELETE_METHOD", defaultDeleteMode)), "deletion method: rm|wipe|crypt/rm|crypt/wipe")
 	wipeArgs := fs.String("wipe-args", envOrDefault("POP_WIPE_ARGS", defaultWipeArgs), "wipe arguments (whitelisted options only)")
 	cryptPassword := fs.String("crypt-password", envOrDefault("POP_CRYPT_PASSWORD", ""), "password source for crypt delete methods")
 	dataDir := fs.String("data-dirs", envOrDefault("POP_DATA_DIRS", ""), "directories whose content will be erased")
