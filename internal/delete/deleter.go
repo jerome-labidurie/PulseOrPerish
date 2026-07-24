@@ -114,6 +114,7 @@ func (d *SafeDeleter) clearWithCrypt(ctx context.Context, dataDir string, files 
 	}
 
 	nextArchiveIdx := 0
+	var errs []error
 	for _, target := range files {
 		select {
 		case <-ctx.Done():
@@ -123,7 +124,8 @@ func (d *SafeDeleter) clearWithCrypt(ctx context.Context, dataDir string, files 
 
 		archivePath, archiveIdx, err := d.nextArchivePath(dataDir, nextArchiveIdx)
 		if err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("resolve archive path for %q: %w", target, err))
+			continue
 		}
 		nextArchiveIdx = archiveIdx + 1
 
@@ -135,32 +137,38 @@ func (d *SafeDeleter) clearWithCrypt(ctx context.Context, dataDir string, files 
 		if err := d.crypter.EncryptPaths([]string{target}, archivePath); err != nil {
 			if errors.Is(err, fscrypt.ErrNoFilesToEncrypt) {
 				d.log.Debug().Str("path", target).Msg("deleting empty entry without encryption")
-				d.deleteTarget(ctx, target)
+				if deleteErr := d.deleteTarget(ctx, target); deleteErr != nil {
+					errs = append(errs, deleteErr)
+				}
 				continue
 			}
 			d.log.Error().Err(err).Str("path", target).Str("archive", archivePath).Msg("failed encrypting entry")
+			errs = append(errs, fmt.Errorf("encrypt %q into %q: %w", target, archivePath, err))
 			continue
 		}
 		d.log.Debug().Str("path", target).Str("archive", archivePath).Msg("encrypted entry")
 
-		d.deleteTarget(ctx, target)
+		if err := d.deleteTarget(ctx, target); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // rm files & dirs from files[]
 func (d *SafeDeleter) clearWithRm(ctx context.Context, files []string) error {
-	return d.clearTargets(ctx, files, func(target string) { d.deleteWithRm(target) })
+	return d.clearTargets(ctx, files, func(target string) error { return d.deleteWithRm(target) })
 }
 
 // wipe files & dirs from files[]
 func (d *SafeDeleter) clearWithWipe(ctx context.Context, files []string) error {
-	return d.clearTargets(ctx, files, func(target string) { d.deleteWithWipe(ctx, target) })
+	return d.clearTargets(ctx, files, func(target string) error { return d.deleteWithWipe(ctx, target) })
 }
 
 // calls clearFn on each file entry from  files[]
-func (d *SafeDeleter) clearTargets(ctx context.Context, files []string, clearFn func(target string)) error {
+func (d *SafeDeleter) clearTargets(ctx context.Context, files []string, clearFn func(target string) error) error {
+	var errs []error
 	for _, target := range files {
 		select {
 		case <-ctx.Done():
@@ -171,35 +179,39 @@ func (d *SafeDeleter) clearTargets(ctx context.Context, files []string, clearFn 
 			d.log.Warn().Str("path", target).Msg("dry-run enabled: would delete entry")
 			continue
 		}
-		clearFn(target)
+		if err := clearFn(target); err != nil {
+			errs = append(errs, err)
+		}
 	}
+	return errors.Join(errs...)
+}
+
+func (d *SafeDeleter) deleteTarget(ctx context.Context, target string) error {
+	if d.baseDeleteMode() == "wipe" {
+		return d.deleteWithWipe(ctx, target)
+	}
+	return d.deleteWithRm(target)
+}
+
+func (d *SafeDeleter) deleteWithRm(target string) error {
+	if err := os.RemoveAll(target); err != nil {
+		d.log.Error().Err(err).Str("path", target).Msg("failed deleting entry")
+		return fmt.Errorf("remove %q: %w", target, err)
+	}
+	d.log.Debug().Str("path", target).Msg("deleted entry")
 	return nil
 }
 
-func (d *SafeDeleter) deleteTarget(ctx context.Context, target string) {
-	if d.baseDeleteMode() == "wipe" {
-		d.deleteWithWipe(ctx, target)
-		return
-	}
-	d.deleteWithRm(target)
-}
-
-func (d *SafeDeleter) deleteWithRm(target string) {
-	if err := os.RemoveAll(target); err != nil {
-		d.log.Error().Err(err).Str("path", target).Msg("failed deleting entry")
-	} else {
-		d.log.Debug().Str("path", target).Msg("deleted entry")
-	}
-}
-
-func (d *SafeDeleter) deleteWithWipe(ctx context.Context, target string) {
+func (d *SafeDeleter) deleteWithWipe(ctx context.Context, target string) error {
 	args := buildWipeArgs(d.wipeArgs, d.logLevel, target)
 	d.log.Info().Str("args", strings.Join(args, " ")).Msg("Starting wipe")
 	out, err := d.runner(ctx, "wipe", args...)
 	if err != nil {
 		d.log.Error().Err(err).Str("output", string(out)).Msg("wipe command failed")
+		return fmt.Errorf("wipe %q: %w", target, err)
 	}
 	d.log.Debug().Str("path", target).Str("output", string(out)).Msg("wipe command executed")
+	return nil
 }
 
 func (d *SafeDeleter) baseDeleteMode() string {

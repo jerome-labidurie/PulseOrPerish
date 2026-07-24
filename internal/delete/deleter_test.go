@@ -307,13 +307,53 @@ func TestCryptRmClearDirectory_SkipsDeleteWhenEncryptionFails(t *testing.T) {
 	crypter := &fakeCrypter{err: errors.New("boom")}
 
 	del := NewSafeDeleter(zerolog.Nop(), false, "crypt/rm", "", "info").SetCrypter(crypter)
-	if err := del.ClearDirectory(context.Background(), d); err != nil {
-		t.Fatalf("expected nil despite encryption failure, got: %v", err)
+	if err := del.ClearDirectory(context.Background(), d); err == nil {
+		t.Fatal("expected error despite encryption failure")
+	} else if !strings.Contains(err.Error(), "encrypt") {
+		t.Fatalf("expected encryption error to be reported, got: %v", err)
 	}
 
 	fshelpers.AssertFilesExist(t, []string{original})
 	if got := fshelpers.CountFilesInDir(t, d); got != 1 {
 		t.Fatalf("expected only original file to remain, got %d entries", got)
+	}
+}
+
+func TestClearDirectory_ContinuesWhenWipeFails(t *testing.T) {
+	d := t.TempDir()
+	first := fshelpers.CreateTestFile(t, d, "first.txt")
+	second := fshelpers.CreateTestFile(t, d, "second.txt")
+
+	var calls int
+	del := NewSafeDeleter(zerolog.Nop(), false, "wipe", "-q -Q 1", "info")
+	del.runner = func(ctx context.Context, bin string, args ...string) ([]byte, error) {
+		calls++
+		target := args[len(args)-1]
+		if calls == 1 {
+			return nil, errors.New("temporary wipe failure")
+		}
+		if err := os.RemoveAll(target); err != nil {
+			return nil, err
+		}
+		return []byte("wiped"), nil
+	}
+
+	err := del.ClearDirectory(context.Background(), d)
+	if err == nil {
+		t.Fatal("expected aggregated error when one wipe fails")
+	}
+	if !strings.Contains(err.Error(), "wipe") {
+		t.Fatalf("expected wipe error to be reported, got: %v", err)
+	}
+
+	if _, err := os.Stat(first); err != nil {
+		t.Fatalf("expected first file to remain after initial wipe failure, got err=%v", err)
+	}
+	if _, err := os.Stat(second); !os.IsNotExist(err) {
+		t.Fatalf("expected second file to be deleted, got err=%v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected two wipe attempts, got %d", calls)
 	}
 }
 
@@ -384,8 +424,10 @@ func TestClearDirectory_ContinuesWhenRemoveAllFails(t *testing.T) {
 	logger := zerolog.New(&buf)
 	del := NewSafeDeleter(logger, false, "rm", "", "info")
 
-	if err := del.ClearDirectory(context.Background(), d); err != nil {
-		t.Fatalf("expected nil despite deletion errors, got: %v", err)
+	if err := del.ClearDirectory(context.Background(), d); err == nil {
+		t.Fatal("expected aggregated error despite deletion failures")
+	} else if !strings.Contains(err.Error(), "remove") {
+		t.Fatalf("expected remove error to be reported, got: %v", err)
 	}
 	if err := os.Chmod(blockedDir, 0o755); err != nil {
 		t.Fatalf("failed to restore blocked directory permissions for assertions: %v", err)
