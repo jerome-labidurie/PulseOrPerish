@@ -26,6 +26,26 @@ type fakeCrypter struct {
 	outputs []string
 }
 
+type flakyCrypter struct {
+	calls  int
+	inputs [][]string
+	files  []string
+}
+
+func (f *flakyCrypter) EncryptPaths(filesin []string, fileout string) error {
+	f.calls++
+	f.inputs = append(f.inputs, append([]string(nil), filesin...))
+	f.files = append(f.files, fileout)
+	if f.calls == 1 {
+		return errors.New("boom")
+	}
+	return os.WriteFile(fileout, []byte(strings.Join(filesin, "\n")), 0o600)
+}
+
+func (f *flakyCrypter) GetCryptedFileName(idx int) string {
+	return fmt.Sprintf("file_%04d.tar.gz.%s", idx, fscrypt.FileExtension)
+}
+
 func (f *fakeCrypter) EncryptPaths(filesin []string, fileout string) error {
 	regularFiles, err := collectTestRegularFiles(filesin)
 	if err != nil {
@@ -316,6 +336,32 @@ func TestCryptRmClearDirectory_SkipsDeleteWhenEncryptionFails(t *testing.T) {
 	fshelpers.AssertFilesExist(t, []string{original})
 	if got := fshelpers.CountFilesInDir(t, d); got != 1 {
 		t.Fatalf("expected only original file to remain, got %d entries", got)
+	}
+}
+
+func TestCryptRmClearDirectory_ContinuesAfterEncryptionFailure(t *testing.T) {
+	d := t.TempDir()
+	first := fshelpers.CreateTestFile(t, d, "first.txt")
+	second := fshelpers.CreateTestFile(t, d, "second.txt")
+	crypter := &flakyCrypter{}
+
+	del := NewSafeDeleter(zerolog.Nop(), false, "crypt/rm", "", "info").SetCrypter(crypter)
+	err := del.ClearDirectory(context.Background(), d)
+	if err == nil {
+		t.Fatal("expected aggregated error when encryption fails")
+	}
+	if !strings.Contains(err.Error(), "encrypt") {
+		t.Fatalf("expected encryption error to be reported, got: %v", err)
+	}
+
+	if _, statErr := os.Stat(first); statErr != nil {
+		t.Fatalf("expected first file to remain after failed encryption, got err=%v", statErr)
+	}
+	if _, statErr := os.Stat(second); !os.IsNotExist(statErr) {
+		t.Fatalf("expected second file to be deleted after recovery, got err=%v", statErr)
+	}
+	if crypter.calls != 2 {
+		t.Fatalf("expected two encryption attempts, got %d", crypter.calls)
 	}
 }
 
