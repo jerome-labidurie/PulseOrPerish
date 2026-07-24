@@ -14,6 +14,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// global timeout for deletion operations
+const deletionTimeout = 3 * time.Hour
+
 // Status is a point-in-time snapshot of the monitor state, suitable for
 // JSON serialisation in API responses.
 type Status struct {
@@ -158,7 +161,7 @@ func (s *Service) evaluate(ctx context.Context, now time.Time) {
 	}
 
 	s.log.Warn().Time("deadline", status.NextDeletion).Str("dataDir", strings.Join(s.dataDir, ",")).Msg("deadline exceeded, clearing directories")
-	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	cctx, cancel := context.WithTimeout(ctx, deletionTimeout)
 	defer cancel()
 	if err := s.deleter.ClearDirectories(cctx, s.dataDir); err != nil {
 		s.log.Error().Err(err).Str("dataDir", strings.Join(s.dataDir, ",")).Msg("directory clearing failed")
