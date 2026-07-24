@@ -150,12 +150,9 @@ func (s *Service) evaluate(ctx context.Context, now time.Time) {
 		return
 	}
 
-	s.mu.Lock()
+	s.mu.RLock()
 	alreadyTriggered := !s.deleteArmedAt.IsZero() && s.deleteArmedAt.Equal(status.NextDeletion)
-	if !alreadyTriggered {
-		s.deleteArmedAt = status.NextDeletion
-	}
-	s.mu.Unlock()
+	s.mu.RUnlock()
 	if alreadyTriggered {
 		return
 	}
@@ -167,6 +164,9 @@ func (s *Service) evaluate(ctx context.Context, now time.Time) {
 		s.log.Error().Err(err).Str("dataDir", strings.Join(s.dataDir, ",")).Msg("directory clearing failed")
 		return
 	}
+	s.mu.Lock()
+	s.deleteArmedAt = status.NextDeletion
+	s.mu.Unlock()
 	s.log.Warn().Str("dataDir", strings.Join(s.dataDir, ",")).Msg("directory content cleared")
 }
 
