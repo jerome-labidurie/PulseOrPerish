@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,6 +12,23 @@ import (
 
 	"github.com/rs/zerolog"
 )
+
+type flakyDeleter struct {
+	calls int
+	err   error
+}
+
+func (f *flakyDeleter) ClearDirectories(ctx context.Context, dirs []string) error {
+	f.calls++
+	if f.calls == 1 {
+		return f.err
+	}
+	return nil
+}
+
+func (f *flakyDeleter) ClearDirectory(ctx context.Context, dir string) error {
+	return f.ClearDirectories(ctx, []string{dir})
+}
 
 func TestRegisterProofUpdatesStatus(t *testing.T) {
 	d := t.TempDir()
@@ -98,5 +116,38 @@ func TestLoadInitialStatePersistsStartupProofAcrossRestart(t *testing.T) {
 	wantNextDeletion := firstSnap.LastProofAt.Add(time.Minute)
 	if !secondSnap.NextDeletion.Equal(wantNextDeletion) {
 		t.Fatalf("expected stable next deletion from persisted proof: got=%s want=%s", secondSnap.NextDeletion, wantNextDeletion)
+	}
+}
+
+func TestEvaluateRetriesAfterFailedDeletion(t *testing.T) {
+	d := t.TempDir()
+	st := state.NewStore(filepath.Join(d, "state"))
+	deleter := &flakyDeleter{err: errors.New("temporary failure")}
+	svc := NewService(zerolog.Nop(), st, deleter, time.Minute, false, []string{filepath.Join(d, "data")})
+	if err := svc.LoadInitialState(); err != nil {
+		t.Fatal(err)
+	}
+
+	svc.mu.Lock()
+	svc.lastProofAt = time.Now().UTC().Add(-2 * time.Minute)
+	svc.deleteArmedAt = time.Time{}
+	svc.mu.Unlock()
+
+	now := time.Now().UTC()
+	svc.evaluate(context.Background(), now)
+	if deleter.calls != 1 {
+		t.Fatalf("expected one deletion attempt after first failure, got %d", deleter.calls)
+	}
+
+	svc.evaluate(context.Background(), now)
+	if deleter.calls != 2 {
+		t.Fatalf("expected retry after failed deletion, got %d calls", deleter.calls)
+	}
+
+	svc.mu.RLock()
+	armed := svc.deleteArmedAt
+	svc.mu.RUnlock()
+	if armed.IsZero() {
+		t.Fatal("expected deletion to be armed after successful retry")
 	}
 }

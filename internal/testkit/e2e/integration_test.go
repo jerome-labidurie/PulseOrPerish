@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"pulseorperish/internal/fscrypt"
 	"pulseorperish/internal/state"
 	"pulseorperish/internal/testkit/fshelpers"
 )
@@ -43,6 +44,7 @@ type TestEnv struct {
 	StateDir string
 }
 
+// requireAppStillHealthy checks that the app responds to /health=200.
 func requireAppStillHealthy(t *testing.T, listenAddr string) {
 	t.Helper()
 	resp, err := http.Get("http://" + listenAddr + "/health")
@@ -55,6 +57,7 @@ func requireAppStillHealthy(t *testing.T, listenAddr string) {
 	}
 }
 
+// doAliveRaw sends a raw POST /alive request with custom headers and body.
 func doAliveRaw(t *testing.T, listenAddr string, headers map[string]string, body io.Reader) (int, map[string]any) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, "http://"+listenAddr+"/alive", body)
@@ -107,9 +110,9 @@ func setupTestEnv(t *testing.T, nb int) TestEnv {
 	}
 }
 
-// TestProofOfLifePostponePostponeDeadline verifies that sending a proof of life
-// postpone the deadline and prevents file deletion.
-func TestProofOfLifePostponePostponeDeadline(t *testing.T) {
+// TestProofOfLifePostponeDeadline verifies that sending a proof of life
+// postpones the deadline and prevents file deletion.
+func TestProofOfLifePostponeDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
@@ -160,9 +163,9 @@ func TestProofOfLifePostponePostponeDeadline(t *testing.T) {
 	t.Logf("PASS: Deadline postponed from %s to %s", nextDel1, nextDel2)
 }
 
-// TestDeadlineTriggersFileDelection verifies that when the deadline arrives
+// TestDeadlineTriggersFileDeletion verifies that when the deadline arrives
 // without a new proof of life, files are deleted.
-func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
+func testDeadlineTriggersFileDeletion(t *testing.T, deleteMode string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	listenAddr := nextListenAddr(t)
@@ -215,11 +218,82 @@ func testDeadlineTriggersFileDelection(t *testing.T, deleteMode string) {
 	t.Log("PASS: Files deleted at deadline")
 }
 
-func TestDeadlineTriggersRmDelection(t *testing.T) {
-	testDeadlineTriggersFileDelection(t, "rm")
+func TestDeadlineTriggersRmDeletion(t *testing.T) {
+	testDeadlineTriggersFileDeletion(t, "rm")
 }
-func TestDeadlineTriggersWipeDelection(t *testing.T) {
-	testDeadlineTriggersFileDelection(t, "wipe")
+func TestDeadlineTriggersWipeDeletion(t *testing.T) {
+	testDeadlineTriggersFileDeletion(t, "wipe")
+}
+
+func testDeadlineTriggersCryptDeletion(t *testing.T, deleteMode string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	listenAddr := nextListenAddr(t)
+
+	env := setupTestEnv(t, 2)
+	app, err := StartAppWithCryptDeleteMethod(t, listenAddr, env.DataDir, env.StateDir, password, testInterval, deleteMode, "-q -Q 1", password)
+	if err != nil {
+		t.Fatalf("failed to start app: %v", err)
+	}
+	defer app.Stop()
+
+	client := NewAppClient(t, listenAddr, password)
+
+	proofStatus, err := client.ProofOfLife(ctx)
+	if err != nil {
+		t.Fatalf("failed to send initial proof: %v", err)
+	}
+	t.Logf("Proof sent: nextDeletion=%v", proofStatus["nextDeletion"])
+
+	var files []string
+	expectedArchives := map[string]int{}
+	for _, dir := range env.DataDir {
+		files = append(files, fshelpers.CreateNestedTestFiles(t, dir)...)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("failed to read top-level entries from %s: %v", dir, err)
+		}
+		expectedArchives[dir] = len(entries)
+	}
+	fshelpers.AssertFilesExist(t, files)
+	t.Logf("Created %d test files in %d dirs", len(files), len(env.DataDir))
+
+	t.Logf("Waiting for crypt deletion (interval=%v, maxWait=%v)...", testInterval, maxDeletionWait)
+	waitCtx, waitCancel := context.WithTimeout(ctx, maxDeletionWait+10*time.Second)
+	if err := WaitForFilesDeleted(waitCtx, files, maxDeletionWait); err != nil {
+		waitCancel()
+		t.Logf("App stdout: %s", app.Stdout())
+		if st, e := client.GetStatus(ctx); e == nil {
+			t.Logf("Final status: overdue=%v, nextDeletion=%v", st["overdue"], st["nextDeletion"])
+		}
+		t.Fatalf("files were not deleted after deadline: %v", err)
+	}
+	waitCancel()
+
+	for _, dir := range env.DataDir {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("failed to read archive directory %s: %v", dir, err)
+		}
+		if len(entries) != expectedArchives[dir] {
+			t.Fatalf("expected %d archive entries in %s, got %d", expectedArchives[dir], dir, len(entries))
+		}
+		for _, entry := range entries {
+			if !strings.HasPrefix(entry.Name(), "file_") || !strings.HasSuffix(entry.Name(), fscrypt.FileExtension) {
+				t.Fatalf("expected only managed archives in %s, found %s", dir, entry.Name())
+			}
+		}
+	}
+	requireAppStillHealthy(t, listenAddr)
+	t.Log("PASS: Files encrypted and deleted at deadline")
+}
+
+func TestDeadlineTriggersCryptRmDeletion(t *testing.T) {
+	testDeadlineTriggersCryptDeletion(t, "crypt/rm")
+}
+
+func TestDeadlineTriggersCryptWipeDeletion(t *testing.T) {
+	testDeadlineTriggersCryptDeletion(t, "crypt/wipe")
 }
 
 // TestMultipleProofCycles verifies that multiple proof of life requests work correctly.
@@ -472,7 +546,7 @@ func TestDryRunModePreventsDeletion(t *testing.T) {
 	t.Logf("Waiting for dry-run deletion attempt (maxWait=%v)...", maxDeletionWait)
 	err = app.WaitForStdoutContains(ctx,
 		"dry-run enabled: would delete entry",
-		"deadline exceeded, clearing directory",
+		"deadline exceeded, clearing directories",
 	)
 	if err != nil {
 		t.Fatalf("did not observe dry-run deletion attempt: %v\nstdout: %s", err, app.Stdout())
@@ -625,14 +699,12 @@ func TestRobustnessHealthCheckResponsivenessUnderLoad(t *testing.T) {
 	defer app.Stop()
 
 	client := &http.Client{Timeout: 3 * time.Second}
-	var maxHealthLatency int64
+	var maxHealthLatency atomic.Int64
 	errCh := make(chan error, 64)
 	var wg sync.WaitGroup
 
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 2 {
+		wg.Go(func() {
 			deadline := time.Now().Add(6 * time.Second)
 			for time.Now().Before(deadline) {
 				start := time.Now()
@@ -648,20 +720,18 @@ func TestRobustnessHealthCheckResponsivenessUnderLoad(t *testing.T) {
 				}
 				lat := time.Since(start).Milliseconds()
 				for {
-					prev := atomic.LoadInt64(&maxHealthLatency)
-					if lat <= prev || atomic.CompareAndSwapInt64(&maxHealthLatency, prev, lat) {
+					prev := maxHealthLatency.Load()
+					if lat <= prev || maxHealthLatency.CompareAndSwap(prev, lat) {
 						break
 					}
 				}
 				time.Sleep(100 * time.Millisecond)
 			}
-		}()
+		})
 	}
 
-	for i := 0; i < 3; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 3 {
+		wg.Go(func() {
 			deadline := time.Now().Add(6 * time.Second)
 			for time.Now().Before(deadline) {
 				resp, err := client.Get("http://" + listenAddr + "/status")
@@ -676,7 +746,7 @@ func TestRobustnessHealthCheckResponsivenessUnderLoad(t *testing.T) {
 				}
 				time.Sleep(150 * time.Millisecond)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -684,11 +754,11 @@ func TestRobustnessHealthCheckResponsivenessUnderLoad(t *testing.T) {
 	for err := range errCh {
 		t.Fatal(err)
 	}
-	if atomic.LoadInt64(&maxHealthLatency) > 750 {
-		t.Fatalf("health latency too high: %dms", atomic.LoadInt64(&maxHealthLatency))
+	if maxHealthLatency.Load() > 750 {
+		t.Fatalf("health latency too high: %dms", maxHealthLatency.Load())
 	}
 	requireAppStillHealthy(t, listenAddr)
-	t.Logf("PASS: /health always responsive under load (max latency: %dms)", atomic.LoadInt64(&maxHealthLatency))
+	t.Logf("PASS: /health always responsive under load (max latency: %dms)", maxHealthLatency.Load())
 	_ = ctx
 }
 

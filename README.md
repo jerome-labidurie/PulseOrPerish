@@ -7,13 +7,27 @@
 
 Dead man switch that deletes your precious data.
 
-Protect what matters with a simple heartbeat: as long as you are alive, your data stays safe; if you stop checking in, **PulseOrPerish** automatically wipes the target directories. Lightweight, self-hosted, and ready in minutes with a web UI, API, and container support.
+Protect what matters with a simple heartbeat: as long as you are alive, your data stays safe; if you stop checking in, **PulseOrPerish** automatically wipes or encrypts the target directories. Lightweight, self-hosted, and ready in minutes with a web UI, API, and container support.
+
+## Quick start
+```bash
+mkdir /tmp/demo-data /tmp/demo-state
+docker run --rm -it -p 8086:8080 \
+  -e POP_PASSWORD=mysecret \
+  -e POP_DATA_DIRS=/data \
+  -v /tmp/demo-data:/data \
+  -v /tmp/demo-state:/state \
+  ghcr.io/jerome-labidurie/pulseorperish:latest
+```
+Then open [http://localhost:8086](http://localhost:8086) and send a proof-of-life by clicking the red button.
+
+You can also use the [docker-compose](./docker-compose.yml) example
 
 ## Features
 - HTTP User Interface to submit proof-of-life with a password (with Dark mode)
 - REST API with same capabilities
 - Persistent heartbeat state surviving container restarts
-- Automatic data directories content wipe when deadline is exceeded
+- Automatic data directories content wipe or encrypt when deadline is exceeded
 - Simple or secure deletion using [wipe](https://wipe.sourceforge.net/)
 - Configurable via CLI flags and environment variables
 - Distroless-compatible container image
@@ -33,12 +47,13 @@ Priority: flags > environment variables > defaults.
 | Description | Env variable | Flag | Default | Values / Example |
 |---|---|---|---|---|
 | Authentication password | `POP_PASSWORD` | `--password` | *(required)* | `mysecret` |
-| Interval between proofs | `POP_INTERVAL` | `--interval` | `720h` | `24h`, `720h` ([format](https://pkg.go.dev/time#ParseDuration)) |
-| Dry-run mode (no deletion) | `POP_DRY_RUN` | `--dry-run` | `false` | `true`, `false` |
-| Deletion method | `POP_DELETE_METHOD` | `--delete-method` | `rm` | `rm`, `wipe` |
-| Arguments for wipe | `POP_WIPE_ARGS` | `--wipe-args` | `-q -Q 1` | `-q -Q 3 -e` |
 | Directories to wipe on deadline | `POP_DATA_DIRS` | `--data-dirs` | *(required)* | `/data`, `/photos,/media/videos` |
+| Max interval between proofs | `POP_INTERVAL` | `--interval` | `720h` | `24h`, `720h` ([format](https://pkg.go.dev/time#ParseDuration)) |
+| Deletion method | `POP_DELETE_METHOD` | `--delete-method` | `rm` | `rm`, `wipe`, `crypt/rm`, `crypt/wipe` |
+| Encrypt password | `POP_CRYPT_PASSWORD` | `--crypt-password` | (same as `POP_PASSWORD`) | See below |
 | Directory for state persistence | `POP_STATE_DIR` | `--state-dir` | `/state` | `/var/lib/pop/state` |
+| Dry-run mode (no deletion) | `POP_DRY_RUN` | `--dry-run` | `false` | `true`, `false` |
+| Arguments for wipe | `POP_WIPE_ARGS` | `--wipe-args` | `-q -Q 1` | `-q -Q 3 -e` ([details](https://linux.die.net/man/1/wipe)) |
 | Log directory | `POP_LOG_PATH` | `--log-path` | (stdout only) | `/var/log/pop/` (directory; if set, a timestamped file is also created) |
 | Log level | `POP_LOG_LEVEL` | `--log-level` | `info` | `debug`, `info`, `warn`, `error` |
 | HTTP listen address | `POP_LISTEN` | `--listen` | `:8080` | `:8086`, `0.0.0.0:8080` |
@@ -48,12 +63,26 @@ Priority: flags > environment variables > defaults.
 
 **`wipe`**: invokes the [`wipe`](https://wipe.sourceforge.net/) utility to securely overwrite data before deletion. Defaults options (See `POP_WIPE_ARGS`) are *not very secure*. Execution can be **very** long.
 
+Use `wipe` with care: effectiveness depends on storage and filesystem behavior (especially on SSDs).
+
+**`crypt/rm`**, **`crypt/wipe`** encrypt the data before deleting the original with `rm` or `wipe` methods. So the data can be recovered later (assuming the password is known). Use `POP_CRYPT_PASSWORD` to provide it :
+* if not provided, uses the value from `POP_PASSWORD`
+* `mySecretPassword` directly provides a password
+* `file:/data/password_in_file` gets the password from a file (recommended in production)
+* `random` create a random password when needed, (**data will not be recoverable**)
+
+The encryption is based on [libsodium](https://libsodium.gitbook.io/doc) and uses the [XChaCha20-Poly1305](https://en.wikipedia.org/wiki/ChaCha20-Poly1305) symetric algorithm. A companion tool is provided for encryption/decryption, see [popcrypt](./cmd/popcrypt/).
+
+### Recovery
+When using `crypt/rm` or `crypt/wipe`, encrypted archives (`*.pop`) are created in each configured data directory.
+Keep the encryption password safe, then decrypt with [popcrypt](./cmd/popcrypt/README.md).
+
 ## Home Assistant
 See [homeassistant.md](./homeassistant.md) for a REST sensor and notifications automation example.
 
 ## Run locally
 ```bash
-go run ./cmd/pulseorperish \
+./pulseorperish \
   --listen=':8086' \
   --password='mysecret' \
   --data-dirs="$(pwd)/demo-data" \
@@ -63,30 +92,25 @@ go run ./cmd/pulseorperish \
   --interval='5m'
 ```
 
-## Docker run
+## Build
 
-You can also use the [docker-compose](./docker-compose.yml) example
-
-```bash
-docker run --rm -it -p 8086:8080 \
-  -e POP_PASSWORD=mysecret \
-  -e POP_DATA_DIRS=/data \
-  -e POP_STATE_DIR=/state \
-  -v $(pwd)/demo-data:/data \
-  -v $(pwd)/demo-state:/state \
-  ghcr.io/jerome-labidurie/pulseorperish:latest
-```
-
-## Build container
+### Build container image
 ```bash
 docker build -t pulseorperish:local .
 ```
 
+### Build pulseorperish binary (Linux dependencies)
+```bash
+sudo apt-get update
+sudo apt-get install -y wipe libsodium-dev
+go build -o pulseorperish ./cmd/pulseorperish
+```
+
 ## API
-- `GET /` no auth, HTTP UI
-- `GET /health` no auth
-- `GET /status` no auth
-- `POST /alive` auth required
+- `GET /` (public) HTTP UI
+- `GET /health` (public)
+- `GET /status` (public)
+- `POST /alive` (authenticated)
 
 Authentication can be done via 2 methods:
 * Header: `Authorization: Bearer <password>`

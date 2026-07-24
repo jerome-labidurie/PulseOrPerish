@@ -14,6 +14,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// global timeout for deletion operations
+const deletionTimeout = 3 * time.Hour
+
 // Status is a point-in-time snapshot of the monitor state, suitable for
 // JSON serialisation in API responses.
 type Status struct {
@@ -45,13 +48,7 @@ type Service struct {
 // NewService creates a Service. The evaluation tick is derived from interval
 // (interval/10, clamped between 1 second and 24 hours).
 func NewService(log zerolog.Logger, st *state.Store, d delete.Deleter, interval time.Duration, dryRun bool, dataDir []string) *Service {
-	tick := interval / 10
-	if tick < time.Second {
-		tick = time.Second
-	}
-	if tick > 24*time.Hour {
-		tick = 24 * time.Hour
-	}
+	tick := min(max(interval/10, time.Second), 24*time.Hour)
 	return &Service{
 		log:       log,
 		store:     st,
@@ -156,23 +153,23 @@ func (s *Service) evaluate(ctx context.Context, now time.Time) {
 		return
 	}
 
-	s.mu.Lock()
+	s.mu.RLock()
 	alreadyTriggered := !s.deleteArmedAt.IsZero() && s.deleteArmedAt.Equal(status.NextDeletion)
-	if !alreadyTriggered {
-		s.deleteArmedAt = status.NextDeletion
-	}
-	s.mu.Unlock()
+	s.mu.RUnlock()
 	if alreadyTriggered {
 		return
 	}
 
 	s.log.Warn().Time("deadline", status.NextDeletion).Str("dataDir", strings.Join(s.dataDir, ",")).Msg("deadline exceeded, clearing directories")
-	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	cctx, cancel := context.WithTimeout(ctx, deletionTimeout)
 	defer cancel()
 	if err := s.deleter.ClearDirectories(cctx, s.dataDir); err != nil {
 		s.log.Error().Err(err).Str("dataDir", strings.Join(s.dataDir, ",")).Msg("directory clearing failed")
 		return
 	}
+	s.mu.Lock()
+	s.deleteArmedAt = status.NextDeletion
+	s.mu.Unlock()
 	s.log.Warn().Str("dataDir", strings.Join(s.dataDir, ",")).Msg("directory content cleared")
 }
 
